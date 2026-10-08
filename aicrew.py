@@ -48,6 +48,7 @@ ADA = ("You are ADA, the calm, slightly dry corporate AI assistant of a factory-
 JOBS_HELP = """Jobs the crew can do (use internal item names such as iron-plate, iron-gear-wheel, stone, wood):
   build        place every ghost (blueprint) near the player that items are available for
   deconstruct  remove everything marked for deconstruction near the player
+  upgrade      carry out the upgrade planner's marks near the player (recipes and contents kept)
   mine         gather a raw resource by hand: item, count
   craft        hand-craft: item, count
   get          obtain an item any way (chests, mining or crafting): item, count

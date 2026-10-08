@@ -25,7 +25,8 @@ local ACKS = { build = { "On it.", "Building.", "Let's get it up." }, deconstruc
   fetch = { "I'll grab it.", "Fetching." }, deliver = { "Bringing it over." }, follow = { "Right behind you." },
   stay = { "Holding here." }, stop = { "Stopping." }, goal = { "New goal. We're on it.", "Got it, working towards that." },
   need = { "None to hand. I'll work for it.", "We'll have to make some. On it." },
-  attack = { "Locked and loaded.", "Let's clear them out.", "Time to burn some nests." } }
+  attack = { "Locked and loaded.", "Let's clear them out.", "Time to burn some nests." },
+  upgrade = { "Upgrading.", "Swapping them out." } }
 
 local pending = {} -- native job id -> what to do with the answer (not saved: an answer in flight at save time is dropped)
 local source_names = {} -- item -> names of resources/trees/rocks that yield it
@@ -361,7 +362,7 @@ local JOBS = {}
 local low_burners -- (defined with the fuel helpers)
 local DOING_WORD = { build = "building", deconstruct = "clearing", mine = "mining", craft = "crafting",
   fetch = "fetching", deliver = "delivering", smelt = "making", place = "placing", tend = "refuelling",
-  feed = "feeding", collect = "collecting", attack = "attacking nests" }
+  feed = "feeding", collect = "collecting", attack = "attacking nests", upgrade = "upgrading" }
 
 local function claims()
   storage.claims = storage.claims or {}
@@ -443,17 +444,26 @@ local function craft_for(m, item, count, single)
 end
 
 -- the nearest ghost whose item it has, can take, or can hand-craft; and {item, count, single} to craft first
-local function next_ghost(m, job)
+-- the item an entity marked for upgrade needs: {name, count, quality}
+local function upgrade_item(ent)
+  local proto, q = ent.get_upgrade_target()
+  local it = proto and proto.items_to_place_this and proto.items_to_place_this[1]
+  if not it then return end
+  return { name = it.name, count = it.count or 1, quality = q and q.name or "normal" }
+end
+
+-- the nearest of `targets` whose item (item_of) it has, can take, or can hand-craft; and {item, count, single} to
+-- craft first. What none of them can get is noted in job.missing (item -> how many short)
+local function next_target(m, job, targets, item_of)
   local e = m.entity
   local cache, craftable, demand, best, bd, best_k = {}, {}, {}, nil, nil, nil
   job.short = {}
   local inv = e.get_main_inventory()
-  for _, g in pairs(e.surface.find_entities_filtered({ type = { "entity-ghost", "tile-ghost" }, force = e.force,
-    position = anchor(m), radius = RADIUS })) do
+  for _, g in pairs(targets) do
     local key = key_of(g)
     local claim = claims()[key]
     if not job.skip[key] and (not claim or claim == m.name or not crew()[claim]) then
-      local it = place_item(g)
+      local it = item_of(g)
       if it then
         local k = it.name .. "/" .. it.quality
         if cache[k] == nil then
@@ -476,19 +486,31 @@ local function next_ghost(m, job)
   for k, it in pairs(job.short) do job.missing[it.name] = demand[k] - cache[k] end
   if not best then return end
   claims()[key_of(best)] = m.name
-  local it = place_item(best)
+  local it = item_of(best)
   if cache[best_k] >= it.count then return best end
   return best, { item = it.name, count = math.min(demand[best_k] - cache[best_k], 50), single = it.count }
 end
 
+local function next_ghost(m, job)
+  local e = m.entity
+  return next_target(m, job, e.surface.find_entities_filtered({ type = { "entity-ghost", "tile-ghost" }, force = e.force,
+    position = anchor(m), radius = RADIUS }), place_item)
+end
+
+local function next_upgrade(m, job)
+  local e = m.entity
+  return next_target(m, job, e.surface.find_entities_filtered({ to_be_upgraded = true, force = e.force,
+    position = anchor(m), radius = RADIUS }), upgrade_item)
+end
+
 -- what it did and what it's missing; on its own (auto) only news: something done, or a new shortage
-local function report(m, job, verb)
+local function report(m, job, verb, reason)
   local parts = {}
   if job.n > 0 then parts[#parts + 1] = verb .. " " .. job.n .. "." end
   local miss = {}
   for name, n in pairs(job.missing or {}) do
     miss[#miss + 1] = pretty(name)
-    if type(n) == "number" and n > 0 then add_need(m.owner, name, n, "the blueprint") end
+    if type(n) == "number" and n > 0 then add_need(m.owner, name, n, reason or "the blueprint") end
   end
   table.sort(miss)
   local short = #miss > 0 and ("Out of " .. table.concat(miss, ", ", 1, math.min(#miss, 4)) .. ". I'll go get some.") or nil
@@ -526,6 +548,47 @@ JOBS.build = function(m, job)
     end
   end
   if g.valid then job.skip[key] = true end
+  claims()[key] = nil
+  job.target = nil
+  return false
+end
+
+JOBS.upgrade = function(m, job)
+  local e = m.entity
+  local t = job.target
+  if not (t and t.valid and t.to_be_upgraded()) then
+    job.missing = {}
+    local c
+    t, c = next_upgrade(m, job)
+    job.target = t
+    if not t then
+      report(m, job, "Upgraded", "the upgrades")
+      if not e.get_main_inventory().is_empty() then table.insert(m.jobs, 2, { kind = "deliver" }) end
+      return true
+    end
+    if c and e.crafting_queue_size == 0 then craft_for(m, c.item, c.count, c.single) end
+  end
+  if not go(m, t.position, math.max(e.build_distance - 2, 2)) then return false end
+  local key = key_of(t)
+  local it = upgrade_item(t)
+  local inv = e.get_main_inventory()
+  local have = inv.get_item_count({ name = it.name, quality = it.quality })
+  if have < it.count then have = have + take(m, it.name, it.count - have, it.quality) end
+  if have < it.count and e.crafting_queue_size > 0 then return false end -- still crafting it
+  if have >= it.count then
+    local proto, q = t.get_upgrade_target()
+    local new = e.surface.create_entity({ name = proto.name, quality = q, position = t.position, direction = t.direction,
+      force = t.force, fast_replace = true, character = e, raise_built = true,
+      type = t.type == "underground-belt" and t.belt_to_ground_type or nil })
+    if new and new.valid then
+      inv.remove({ name = it.name, count = it.count, quality = it.quality })
+      job.n = job.n + 1
+    else
+      job.skip[key] = true
+    end
+  else
+    job.skip[key] = true
+  end
   claims()[key] = nil
   job.target = nil
   return false
@@ -1553,7 +1616,9 @@ local function idle(m)
       local area = { position = anchor(m), radius = RADIUS, limit = 1, to_be_deconstructed = true }
       local kind
       if e.surface.count_entities_filtered(area) > 0 then kind = "deconstruct" end
-      area.to_be_deconstructed, area.type, area.force = nil, { "entity-ghost", "tile-ghost" }, e.force
+      area.to_be_deconstructed, area.to_be_upgraded, area.force = nil, true, e.force
+      if not kind and e.surface.count_entities_filtered(area) > 0 then kind = "upgrade" end
+      area.to_be_upgraded, area.type = nil, { "entity-ghost", "tile-ghost" }
       if not kind and e.surface.count_entities_filtered(area) > 0 then kind = "build" end
       if kind then
         m.jobs[1] = { kind = kind, auto = true, n = 0, skip = {} }
@@ -1661,7 +1726,7 @@ local function job_for(m, kind, item, count, extra)
     if not it then return end
     return { kind = "goal", item = it, count = math.min(math.max(count or 100, 1), 100000), use_line = use_line and true or nil,
       rate = extra and tonumber(extra.rate) }
-  elseif kind == "build" or kind == "deconstruct" or kind == "deliver" then
+  elseif kind == "build" or kind == "deconstruct" or kind == "deliver" or kind == "upgrade" then
     return { kind = kind }
   elseif kind == "attack" then
     return { kind = "attack" }
@@ -1670,7 +1735,7 @@ local function job_for(m, kind, item, count, extra)
   end
 end
 
-local VERBS = { build = "build", construct = "build", clear = "deconstruct", deconstruct = "deconstruct",
+local VERBS = { build = "build", construct = "build", clear = "deconstruct", deconstruct = "deconstruct", upgrade = "upgrade",
   demolish = "deconstruct", remove = "deconstruct", mine = "mine", gather = "get", collect = "get", get = "get",
   fetch = "get", bring = "get", grab = "get", craft = "craft", make = "craft", follow = "follow", come = "follow",
   stay = "stay", wait = "stay", stop = "stop", goal = "goal", aim = "goal", attack = "attack", fight = "attack",
@@ -1684,7 +1749,7 @@ local function parse(text)
   local kind = VERBS[words[1] or ""]
   if not kind then return end
   table.remove(words, 1)
-  if kind == "build" or kind == "deconstruct" or kind == "stop" or kind == "stay" or kind == "deliver" or kind == "attack" then
+  if kind == "build" or kind == "deconstruct" or kind == "stop" or kind == "stay" or kind == "deliver" or kind == "attack" or kind == "upgrade" then
     return #words <= 2 and kind or nil -- "build" / "clear it" / "stop now", nothing longer
   end
   if kind == "follow" then return (#words <= 2) and kind or nil end
@@ -1810,7 +1875,7 @@ local function order(owner, text)
   local kind, item, count = parse(rest)
   if kind then
     local targets = members
-    if not (kind == "build" or kind == "deconstruct" or kind == "stop" or kind == "follow" or kind == "stay" or kind == "deliver" or kind == "attack") then
+    if not (kind == "build" or kind == "deconstruct" or kind == "stop" or kind == "follow" or kind == "stay" or kind == "deliver" or kind == "attack" or kind == "upgrade") then
       targets = { busiest_last(members) }
     end
     for i, m in ipairs(targets) do
@@ -2142,6 +2207,7 @@ local function build_panel(player)
     r.add({ type = "label", caption = "Everyone:" })
     btn(r, "Build", "build", nil, "Place the ghosts near you now (making what's missing)", 64)
     btn(r, "Clear", "deconstruct", nil, "Remove what's marked for deconstruction near you", 64)
+    btn(r, "Upgrade", "upgrade", nil, "Carry out the upgrade planner's marks near you (making the new pieces); recipes and contents kept", 76)
     btn(r, "Deliver", "deliver", nil, "Bring you everything they carry", 72)
     btn(r, "Come", "follow", nil, "Follow you", 64)
     btn(r, "Stop", "stop", nil, "Drop all jobs", 56)

@@ -21,7 +21,7 @@ The crew button (top left) opens it: movable, and resizable with fnative-std. Th
 as is, the rest goes to the AI), then tabs:
 
 - **Crew**: whether AI chat works, each member's job with **Fight**, **Auto**, **Stay/Follow**, **Stop**, **Fire**;
-  **Hire**; everyone: **Build**, **Clear**, **Deliver**, **Come**, **Stop**, **Clear nests**.
+  **Hire**; everyone: **Build**, **Clear**, **Upgrade**, **Deliver**, **Come**, **Stop**, **Clear nests**.
 - **Orders**: who (or anyone), an item and a count: **Get** (from chests or the network, else mined, crafted or made in
   a machine; brought to you), **Mine**, **Craft**.
 - **Goal**: an item, how many to have, optionally a **Production line** (bpgen) at a rate; what they're on.
@@ -29,7 +29,9 @@ as is, the rest goes to the AI), then tabs:
   voices, ADA, chatter. The same values as Settings > Mod settings > Per player.
 
 **Auto** (on by default): with nothing queued, a crew member works like a construction bot within 48 tiles of you:
-deconstruction marks first (items brought to you), then ghosts, making what's missing. Items come from your
+deconstruction marks first (items brought to you), then the upgrade planner's marks, then ghosts, making what's
+missing. Upgrades are done as a player's hand does them (fast-replace): the machine keeps its recipe and contents, a
+belt its items, everything its direction and settings, and the old piece comes back to you. Items come from your
 pockets, chests near you and your logistic network, taken directly (no walking to each chest). Everything but chat
 works without fnative.
 
@@ -104,6 +106,7 @@ death, crew hired or lost.
 From this folder:
 
 ```
+python test/run.py ac-upgrade 18010 headless game: upgrade marks done like a player: recipe, contents, belt items kept
 python test/run.py ac-arm 18010    headless game: no weapons anywhere: makes a submachine gun and magazines
 python test/run.py ac-arm2 36010   headless game: magazines but no shells: submachine guns, not shotguns; stray ammo fixed
 python test/run.py ac-fight        headless game: arms up, kills biters, clears a spawner and a worm, respawns
