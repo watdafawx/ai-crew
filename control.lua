@@ -786,6 +786,13 @@ local function machines_for(m, r, item)
         in_line = true
       end
     end
+    if not in_line then -- (a machine of yours that inserters feed or empty is part of a production line: not theirs)
+      local b = f.bounding_box
+      for _, i in pairs(e.surface.find_entities_filtered({ type = "inserter", force = e.force,
+        area = { { b.left_top.x - 3, b.left_top.y - 3 }, { b.right_bottom.x + 3, b.right_bottom.y + 3 } } })) do
+        if i.drop_target == f or i.pickup_target == f then in_line = true break end
+      end
+    end
     if not in_line and p.crafting_categories[r.category] and f.status ~= defines.entity_status.no_power
       and (not p.fixed_recipe or p.fixed_recipe == r.name) then
       local src, res = f.get_inventory(IN[f.type]), f.get_inventory(OUT[f.type])
@@ -908,6 +915,47 @@ low_burners = function(m, limit)
   return out
 end
 
+-- where the crew may put a building of `name` near `near`: on its own grid (a 2x2 at whole tiles, a 3x3 at half tiles:
+-- nothing shifts when it's built), placeable as a player's would be, and `clear` tiles clear of the force's buildings
+-- and ghosts all round, so it never crowds a production line, an inserter or a walkway. Nearest first, out to 32 tiles
+local function free_spot(s, force, name, near, clear)
+  local box = prototypes.entity[name].collision_box
+  local w = math.ceil(box.right_bottom.x - box.left_top.x - 0.01)
+  local h = math.ceil(box.right_bottom.y - box.left_top.y - 0.01)
+  local ox, oy = (w % 2 == 1) and 0.5 or 0, (h % 2 == 1) and 0.5 or 0
+  local cx, cy = math.floor(near.x + 0.5), math.floor(near.y + 0.5)
+  for r = 0, 32 do
+    for dx = -r, r do
+      for dy = -r, r do
+        if math.max(math.abs(dx), math.abs(dy)) == r then
+          local pos = { x = cx + dx + ox, y = cy + dy + oy }
+          if s.can_place_entity({ name = name, position = pos, force = force, build_check_type = defines.build_check_type.manual })
+            and s.count_entities_filtered({ area = { { pos.x - w / 2 - clear, pos.y - h / 2 - clear },
+              { pos.x + w / 2 + clear, pos.y + h / 2 + clear } }, force = force, type = { "character", "character-corpse" },
+              invert = true, limit = 1 }) == 0 then
+            return pos
+          end
+        end
+      end
+    end
+  end
+end
+
+-- where the crew's own machines go: beside the ones they built before, else open ground a little way from the owner
+local function crew_area(m, type)
+  storage.crew_built = storage.crew_built or {}
+  for i = #storage.crew_built, 1, -1 do
+    local b = storage.crew_built[i]
+    if not b.valid then
+      table.remove(storage.crew_built, i)
+    elseif b.type == type and b.surface == m.entity.surface and dist2(b.position, anchor(m)) < RADIUS * RADIUS then
+      return b.position
+    end
+  end
+  local a = anchor(m)
+  return { x = a.x + 8, y = a.y - 6 }
+end
+
 JOBS.place = function(m, job)
   local e = m.entity
   local inv = e.get_main_inventory()
@@ -921,17 +969,25 @@ JOBS.place = function(m, job)
     job.at = nil
   end
   if not job.at then
-    local a = anchor(m)
-    local near = e.surface.find_entities_filtered({ type = proto.type, force = e.force, position = a, radius = RADIUS })
-    local base = near[1] and { x = near[1].position.x + 2, y = near[1].position.y } or { x = a.x + 4, y = a.y - 3 }
-    job.at = e.surface.find_non_colliding_position(proto.name, base, 16, 1)
-    if not job.at then say(m, "No room for a " .. pretty(job.item) .. " near you.") return true end
+    job.at = free_spot(e.surface, e.force, proto.name, crew_area(m, proto.type), 1)
+    if not job.at then say(m, "No clear ground for a " .. pretty(job.item) .. " near you.") return true end
   end
   if not go(m, job.at, math.max(e.build_distance - 2, 2)) then return false end
-  spec.position, spec.build_check_type, spec.raise_built = job.at, nil, true
-  if e.surface.create_entity(spec) then
+  spec.position = job.at
+  if not e.surface.can_place_entity(spec) then -- (something got built there meanwhile)
+    if job.fixed then return true end
+    job.at = nil
+    return false
+  end
+  spec.build_check_type, spec.raise_built = nil, true
+  local built = e.surface.create_entity(spec)
+  if built then
     inv.remove({ name = job.item, count = 1 })
     job.n = 1
+    if not job.fixed then
+      storage.crew_built = storage.crew_built or {}
+      table.insert(storage.crew_built, built)
+    end
     if not job.quiet then say(m, "Set up a " .. pretty(job.item) .. ".") end
   end
   return true
