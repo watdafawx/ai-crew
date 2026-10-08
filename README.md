@@ -47,8 +47,8 @@ something only a machine makes becomes a *need*, worked on before the goal. The 
 take it if it's around; mine it if there's a source nearby (ore, stone, coal, trees); hand-craft it; otherwise run its
 recipe in a free machine near you: load the ingredients, fuel burners (coal, else wood, mined if need be), collect the
 output. They borrow only machines of yours that no inserter feeds or empties (anything in a production line is left
-alone), and put their own on their grid, a tile clear of your buildings and ghosts, beside the ones they built
-before. Vanilla furnaces pick their own recipe; assembler-type machines (assemblers, and overhaul mods' furnaces that
+alone), and put their own on their grid, 3 tiles clear of your buildings, ghosts and floors (concrete, paths),
+beside the ones they built before; never more than three of a kind. Vanilla furnaces pick their own recipe; assembler-type machines (assemblers, and overhaul mods' furnaces that
 need a recipe chosen) get it set when they're empty and idle.
 
 **They build what the plan needs.** No free machine for a recipe? They make one (burner-powered kinds first, so a
@@ -109,6 +109,7 @@ From this folder:
 
 ```
 python test/run.py ac-place 36010   headless game: own furnace on clear ground, the player's line machines left alone
+python test/run.py ac-asmfurnace 36010 headless game: the same with a stone furnace that needs a recipe (overhaul packs)
 python test/run.py ac-upgrade 18010 headless game: upgrade marks done like a player: recipe, contents, belt items kept
 python test/run.py ac-arm 18010    headless game: no weapons anywhere: makes a submachine gun and magazines
 python test/run.py ac-arm2 36010   headless game: magazines but no shells: submachine guns, not shotguns; stray ammo fixed

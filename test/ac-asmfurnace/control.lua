@@ -1,8 +1,7 @@
--- Headless check of a reported case: the crew put a furnace half inside a machine. Home is ringed by the player's own
--- line: assemblers and stone furnaces fed by inserters. A goal needs smelting: the crew must leave the player's
--- machines alone (they're in a line) and put their own furnace on its grid, a tile clear of everything of the player's.
+-- Headless check: the placement case with the stone furnace an assembling machine (a recipe must be set), as in
+-- overhaul packs: one crew furnace, its recipe set, the goal reached; the line left alone, nothing spammed.
 local out = {}
-local function log(s) out[#out + 1] = s helpers.write_file("ac-place.txt", table.concat(out, "\n") .. "\n") end
+local function log(s) out[#out + 1] = s helpers.write_file("ac-asmfurnace.txt", table.concat(out, "\n") .. "\n") end
 local D = defines.direction
 
 script.on_nth_tick(5, function(ev)
@@ -44,10 +43,10 @@ script.on_nth_tick(600, function(ev)
     if not theirs then mine[#mine + 1] = fur end
   end
   log(string.format("t=%d doing %s; crew furnaces %d; chest plates %d", ev.tick, tostring(st.doing), #mine, inv.get_item_count("iron-plate")))
-  if inv.get_item_count("iron-plate") < 10 and ev.tick < 36000 then return end
+  if inv.get_item_count("iron-plate") < 10 and #mine <= 1 and ev.tick < 36000 then return end
   local untouched = true
   for _, pf in pairs(storage.player_furnaces) do
-    if not pf.get_inventory(defines.inventory.furnace_source).is_empty() or pf.products_finished > 0 then untouched = false end
+    if pf.get_recipe() or pf.products_finished > 0 then untouched = false end
   end
   local clear, overlaps = #mine > 0, false
   for _, fur in pairs(mine) do
@@ -64,7 +63,8 @@ script.on_nth_tick(600, function(ev)
   end
   local checks = {
     { "the player's line furnaces left alone", untouched },
-    { "a crew furnace built", #mine > 0 },
+    { "one crew furnace, not a row of them (" .. #mine .. ")", #mine == 1 },
+    { "its recipe set", mine[1] ~= nil and mine[1].get_recipe() ~= nil and mine[1].get_recipe().name == "iron-plate" },
     { "it overlaps nothing", not overlaps },
     { "3 tiles clear of the player's buildings", clear },
     { "goal reached", inv.get_item_count("iron-plate") >= 10 },

@@ -34,6 +34,11 @@ local source_names = {} -- item -> names of resources/trees/rocks that yield it
 -- ---------------------------------------------------------------------------------------------------------------- util
 
 local map_marker -- (with hire)
+
+local function crew_built(e) -- (machines the crew put down: theirs to use)
+  for _, b in pairs(storage.crew_built or {}) do if b == e then return true end end
+  return false
+end
 local delayed = {} -- (tests: path answers held back, as a busy pathfinder in a big base would)
 local path_finished -- (with the events)
 
@@ -786,7 +791,7 @@ local function machines_for(m, r, item)
         in_line = true
       end
     end
-    if not in_line then -- (a machine of yours that inserters feed or empty is part of a production line: not theirs)
+    if not in_line and not crew_built(f) then -- (a machine of yours that inserters feed or empty is part of a line: not theirs)
       local b = f.bounding_box
       for _, i in pairs(e.surface.find_entities_filtered({ type = "inserter", force = e.force,
         area = { { b.left_top.x - 3, b.left_top.y - 3 }, { b.right_bottom.x + 3, b.right_bottom.y + 3 } } })) do
@@ -915,24 +920,35 @@ low_burners = function(m, limit)
   return out
 end
 
+-- is anything of the force's (not the crew's own, not a character) in area; or a floor the player laid (concrete,
+-- stone path: a tile with a hidden tile under it)
+local function players_stuff(s, force, area)
+  for _, e in pairs(s.find_entities_filtered({ area = area, force = force })) do
+    if e.type ~= "character" and e.type ~= "character-corpse" and not crew_built(e) then return true end
+  end
+  return s.count_tiles_filtered({ area = area, has_hidden_tile = true, limit = 1 }) > 0
+end
+
 -- where the crew may put a building of `name` near `near`: on its own grid (a 2x2 at whole tiles, a 3x3 at half tiles:
--- nothing shifts when it's built), placeable as a player's would be, and `clear` tiles clear of the force's buildings
--- and ghosts all round, so it never crowds a production line, an inserter or a walkway. Nearest first, out to 32 tiles
+-- nothing shifts when it's built), placeable as a player's would be, `clear` tiles clear of the player's buildings,
+-- ghosts and floors (so it never crowds a production line, an inserter or a walkway) and a tile clear of the crew's
+-- own. Nearest first, out to 40 tiles
 local function free_spot(s, force, name, near, clear)
   local box = prototypes.entity[name].collision_box
   local w = math.ceil(box.right_bottom.x - box.left_top.x - 0.01)
   local h = math.ceil(box.right_bottom.y - box.left_top.y - 0.01)
   local ox, oy = (w % 2 == 1) and 0.5 or 0, (h % 2 == 1) and 0.5 or 0
   local cx, cy = math.floor(near.x + 0.5), math.floor(near.y + 0.5)
-  for r = 0, 32 do
+  for r = 0, 40 do
     for dx = -r, r do
       for dy = -r, r do
         if math.max(math.abs(dx), math.abs(dy)) == r then
           local pos = { x = cx + dx + ox, y = cy + dy + oy }
+          -- (count_entities_filtered's invert would invert the force too: the player's own buildings then didn't count)
           if s.can_place_entity({ name = name, position = pos, force = force, build_check_type = defines.build_check_type.manual })
-            and s.count_entities_filtered({ area = { { pos.x - w / 2 - clear, pos.y - h / 2 - clear },
-              { pos.x + w / 2 + clear, pos.y + h / 2 + clear } }, force = force, type = { "character", "character-corpse" },
-              invert = true, limit = 1 }) == 0 then
+            and not players_stuff(s, force, { { pos.x - w / 2 - clear, pos.y - h / 2 - clear }, { pos.x + w / 2 + clear, pos.y + h / 2 + clear } })
+            and s.count_entities_filtered({ area = { { pos.x - w / 2 - 1, pos.y - h / 2 - 1 }, { pos.x + w / 2 + 1, pos.y + h / 2 + 1 } },
+              force = force, type = { "furnace", "assembling-machine", "electric-pole", "boiler", "generator", "offshore-pump" }, limit = 1 }) == 0 then
             return pos
           end
         end
@@ -969,7 +985,7 @@ JOBS.place = function(m, job)
     job.at = nil
   end
   if not job.at then
-    job.at = free_spot(e.surface, e.force, proto.name, crew_area(m, proto.type), 1)
+    job.at = free_spot(e.surface, e.force, proto.name, crew_area(m, proto.type), 3)
     if not job.at then say(m, "No clear ground for a " .. pretty(job.item) .. " near you.") return true end
   end
   if not go(m, job.at, math.max(e.build_distance - 2, 2)) then return false end
@@ -1199,6 +1215,13 @@ local function need_machine(m, r, item, depth)
       return power_to(m, f, depth)
     end
   end
+  -- (never a row of them: three of the crew's own for this already and none usable means something else is wrong)
+  local own = 0
+  for _, b in pairs(storage.crew_built or {}) do
+    if b.valid and b.prototype.crafting_categories and b.prototype.crafting_categories[r.category]
+      and dist2(b.position, anchor(m)) < RADIUS * RADIUS then own = own + 1 end
+  end
+  if own >= 3 then return nil, "I've set up " .. own .. " machines for " .. pretty(item) .. " and can't use them; something's in the way." end
   local options = {}
   for name, p in pairs(prototypes.get_entity_filtered({ { filter = "crafting-category", crafting_category = r.category } })) do
     local it = (p.type == "furnace" or p.type == "assembling-machine") and p.items_to_place_this and p.items_to_place_this[1]
@@ -2518,6 +2541,19 @@ local function init()
   crew()
   storage.paths, storage.claims = storage.paths or {}, storage.claims or {}
   if not storage.seen then science_check(true) end
+  -- (0.3.1 could crowd the player's base with the crew's machines: empty ones too close to it get taken down)
+  for _, b in pairs(storage.crew_built or {}) do
+    if b.valid and not b.to_be_deconstructed() then
+      local bb = b.bounding_box
+      local area = { { bb.left_top.x - 3, bb.left_top.y - 3 }, { bb.right_bottom.x + 3, bb.right_bottom.y + 3 } }
+      local empty = true
+      for _, i in ipairs({ 1, 2, 3, 4 }) do
+        local inv = b.get_inventory(i)
+        if inv and not inv.is_empty() then empty = false end
+      end
+      if empty and players_stuff(b.surface, b.force, area) then b.order_deconstruction(b.force) end
+    end
+  end
   if storage.map_v ~= 2 then -- (map markers drawn again: the first ones' names grew huge when zoomed out)
     for _, o in pairs(rendering.get_all_objects(script.mod_name)) do
       if o.valid and o.render_mode == "chart" then o.destroy() end
