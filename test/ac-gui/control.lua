@@ -1,4 +1,13 @@
 -- Real client (through the fnative launcher): three crew, the window on each tab, a screenshot of each, the AI test.
+-- (no crash-site intro: it pauses the game and waits for the player to press Tab)
+script.on_init(function()
+  local fp = remote.interfaces["freeplay"]
+  if fp then
+    if fp.set_skip_intro then remote.call("freeplay", "set_skip_intro", true) end
+    if fp.set_disable_crashsite then remote.call("freeplay", "set_disable_crashsite", true) end
+  end
+end)
+
 local function shot(name) game.take_screenshot({ player = 1, path = "ac-gui-" .. name .. ".png", show_gui = true }) end
 local function tab(i)
   remote.call("ai-crew", "panel", 1, i)

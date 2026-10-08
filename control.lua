@@ -33,6 +33,8 @@ local source_names = {} -- item -> names of resources/trees/rocks that yield it
 -- ---------------------------------------------------------------------------------------------------------------- util
 
 local map_marker -- (with hire)
+local delayed = {} -- (tests: path answers held back, as a busy pathfinder in a big base would)
+local path_finished -- (with the events)
 
 local function crew()
   storage.crew = storage.crew or {}
@@ -246,7 +248,8 @@ end
 -- its own place near pos: crew members spread round the owner instead of piling onto one point
 local function spot(m, pos)
   local a = (m.phase or 0) * 2.4
-  return { x = pos.x + math.cos(a) * 3, y = pos.y + math.sin(a) * 3 }
+  local want = { x = pos.x + math.cos(a) * 3, y = pos.y + math.sin(a) * 3 }
+  return m.entity.surface.find_non_colliding_position("character", want, 5, 0.5) or want
 end
 
 local function stop_walk(m)
@@ -261,7 +264,7 @@ end
 
 local function request_path(m)
   local e, mv = m.entity, m.move
-  local id = e.surface.request_path({ bounding_box = { { -0.2, -0.2 }, { 0.2, 0.2 } },
+  local id = e.surface.request_path({ bounding_box = { { -0.35, -0.35 }, { 0.35, 0.35 } },
     collision_mask = e.prototype.collision_mask, start = e.position, goal = mv.goal, force = e.force,
     radius = math.max(mv.radius - 0.5, 0.5), entity_to_ignore = e, pathfind_flags = { cache = false, no_break = true } })
   storage.paths = storage.paths or {}
@@ -276,7 +279,9 @@ local function go(m, pos, radius)
     return true
   end
   if not (m.move and dist2(m.move.goal, pos) < 1) then
-    m.move = { goal = { x = pos.x, y = pos.y }, radius = radius, hops = 0 }
+    local near = m.move and dist2(m.move.goal, pos) < 64
+    m.move = { goal = { x = pos.x, y = pos.y }, radius = radius, hops = near and m.move.hops or 0,
+      still_total = near and m.move.still_total or 0 }
     request_path(m)
   end
   return false
@@ -286,25 +291,48 @@ local function walk(m)
   local mv, e = m.move, m.entity
   if dist2(e.position, mv.goal) <= mv.radius * mv.radius then return stop_walk(m) end
   if not mv.path then
+    -- waiting for the pathfinder (slow in a big base): stand still, not keep walking the old way into a machine
+    if mv.walking ~= false then
+      e.walking_state = { walking = false, direction = D.north }
+      mv.walking = false
+    end
     if mv.retry and game.tick >= mv.retry then mv.retry = nil request_path(m) end
     return
   end
+  mv.walking = true
   local wp = mv.path[mv.i]
   if wp and dist2(e.position, wp.position) < 0.25 then
     mv.i = mv.i + 1
     wp = mv.path[mv.i]
   end
   if not wp then
-    if mv.final then return stop_walk(m) end
+    if mv.final or not e.surface.can_place_entity({ name = "character", position = mv.goal }) then return stop_walk(m) end
     mv.final = true
     mv.path[mv.i] = { position = mv.goal }
     wp = mv.path[mv.i]
   end
   local dx, dy = wp.position.x - e.position.x, wp.position.y - e.position.y
-  e.walking_state = { walking = true, direction = DIRS[math.floor(math.atan2(dx, -dy) / (math.pi / 4) + 0.5) % 8 + 1] }
+  local d = math.floor(math.atan2(dx, -dy) / (math.pi / 4) + 0.5) % 8
+  if mv.slide and game.tick < mv.slide.until_tick then d = (d + mv.slide.turn) % 8 end -- (sliding round a corner)
+  e.walking_state = { walking = true, direction = DIRS[d + 1] }
   -- stuck (hardly moved for 1.5 s): ask for a new path; after three tries hop next to the goal
-  if mv.last and dist2(e.position, mv.last) < 0.0004 then mv.still = mv.still + 1 else mv.still = 0 end
+  if mv.last and dist2(e.position, mv.last) < 0.0004 then
+    mv.still, mv.still_total = mv.still + 1, (mv.still_total or 0) + 1
+  else
+    mv.still = 0
+  end
   mv.last = { x = e.position.x, y = e.position.y }
+  -- pushing against something: turn one step either way for a moment to slide along it
+  if mv.still > 0 and mv.still % 12 == 0 then
+    mv.flip = not mv.flip
+    mv.slide = { turn = mv.flip and 1 or 7, until_tick = game.tick + 14 }
+  end
+  -- stuck a long while, even across small goal changes: hop to free ground near the goal
+  if (mv.still_total or 0) > 240 then
+    local to = e.surface.find_non_colliding_position(e.name, mv.goal, 6, 0.5)
+    if to then e.teleport(to) end
+    return stop_walk(m)
+  end
   if mv.still == 20 then -- (another crew member in the way: step aside)
     for _, o in pairs(crew()) do
       if o ~= m and o.entity.valid and dist2(o.entity.position, e.position) < 2.25 then
@@ -1582,8 +1610,8 @@ map_marker = function(e, name, color)
   rendering.draw_circle({ color = color, radius = 1.6, filled = true, target = e, surface = e.surface, render_mode = "chart" })
   rendering.draw_circle({ color = { 0, 0, 0 }, radius = 1.6, width = 2, filled = false, target = e, surface = e.surface,
     render_mode = "chart" })
-  rendering.draw_text({ text = name, target = { entity = e, offset = { 0, -4 } }, surface = e.surface, color = color,
-    scale = 3, alignment = "center", render_mode = "chart", scale_with_zoom = true })
+  rendering.draw_text({ text = name, target = { entity = e, offset = { 0, -3 } }, surface = e.surface, color = color,
+    scale = 1.2, alignment = "center", vertical_alignment = "bottom", render_mode = "chart" })
 end
 
 local function hire(name, surface, position, force, owner)
@@ -2368,6 +2396,13 @@ local function init()
   crew()
   storage.paths, storage.claims = storage.paths or {}, storage.claims or {}
   if not storage.seen then science_check(true) end
+  if storage.map_v ~= 2 then -- (map markers drawn again: the first ones' names grew huge when zoomed out)
+    for _, o in pairs(rendering.get_all_objects(script.mod_name)) do
+      if o.valid and o.render_mode == "chart" then o.destroy() end
+    end
+    for _, m in pairs(crew()) do m.mapped = nil end
+    storage.map_v = 2
+  end
   for _, m in pairs(crew()) do
     if m.entity and m.entity.valid and not m.mapped then map_marker(m.entity, m.name, m.color) end
     m.mapped = true
@@ -2438,6 +2473,9 @@ script.on_event(defines.events.on_tick, function(ev)
     end
   end
   if t % 600 == 0 then science_check(false) end
+  for k = #delayed, 1, -1 do
+    if t >= delayed[k].at then path_finished(table.remove(delayed, k).ev) end
+  end
   if t % 300 == 0 and storage.fallen then
     for name, f in pairs(storage.fallen) do
       if t >= f.at and game.get_surface(f.surface) then
@@ -2457,7 +2495,13 @@ script.on_event(defines.events.on_tick, function(ev)
   end
 end)
 
-script.on_event(defines.events.on_script_path_request_finished, function(ev)
+
+path_finished = function(ev)
+  if storage.path_delay and not ev.delayed then
+    delayed[#delayed + 1] = { at = game.tick + storage.path_delay, ev = { id = ev.id, path = ev.path, try_again_later = ev.try_again_later,
+      tick = ev.tick, delayed = true } }
+    return
+  end
   local name = storage.paths and storage.paths[ev.id]
   if not name then return end
   storage.paths[ev.id] = nil
@@ -2470,7 +2514,8 @@ script.on_event(defines.events.on_script_path_request_finished, function(ev)
   else
     m.move.path, m.move.i = { { position = m.move.goal } }, 1 -- no path: straight at it, the stuck check hops it
   end
-end)
+end
+script.on_event(defines.events.on_script_path_request_finished, path_finished)
 
 script.on_event(defines.events.on_research_finished, function(ev)
   if ev.by_script then return end
@@ -2505,6 +2550,8 @@ remote.add_interface("ai-crew", {
     return m.name
   end,
   order = function(owner, text) order(owner, text) end,
+  -- (tests) path answers held back n ticks, as a busy pathfinder would
+  test_path_delay = function(n) storage.path_delay = n end,
   -- (tests) a button of the window pressed
   press = function(player_index, action) act(game.get_player(player_index), action) end,
   ai_status = function(player_index) return storage.ai and storage.ai[player_index] end,

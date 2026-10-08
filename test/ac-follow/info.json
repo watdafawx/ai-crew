@@ -1,0 +1,2 @@
+{"name": "ac-follow", "version": "0.0.1", "title": "ai crew follow test", "author": "mtopfox", "factorio_version": "2.0",
+ "dependencies": ["base", "ai-crew", "fnative-std"]}

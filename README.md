@@ -113,5 +113,6 @@ python test/run.py ac-boot         headless game: from nothing, a furnace, plate
 python test/run.py ac-goal         headless game: a 10 gear goal from ore, coal and an empty furnace
 python test/run.py                 headless game: auto clear and build (crafting a missing item), mine round a wall, craft, deliver
 python test/run_gui.py             real client (fnative launcher): every tab screenshotted, Settings saved and tested
+python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)
 python test/test_py.py [--live KEY] aicrew.py offline; --live asks a real provider once
 ```
