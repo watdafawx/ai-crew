@@ -1,0 +1,15 @@
+data:extend({
+  { type = "string-setting", name = "ai-crew-provider", setting_type = "runtime-per-user", default_value = "auto",
+    allowed_values = { "auto", "pollinations", "openrouter", "groq", "gemini", "cerebras", "mistral", "ollama", "off" },
+    order = "a" },
+  { type = "string-setting", name = "ai-crew-api-key", setting_type = "runtime-per-user", default_value = "",
+    allow_blank = true, order = "b" },
+  { type = "string-setting", name = "ai-crew-model", setting_type = "runtime-per-user", default_value = "",
+    allow_blank = true, order = "c" },
+  { type = "bool-setting", name = "ai-crew-voices", setting_type = "runtime-per-user", default_value = true, order = "d" },
+  { type = "bool-setting", name = "ai-crew-ada", setting_type = "runtime-per-user", default_value = true, order = "e" },
+  { type = "string-setting", name = "ai-crew-ada-voice", setting_type = "runtime-per-user", default_value = "ava",
+    allowed_values = { "ava", "jenny", "aria", "emma", "michelle" }, order = "e2" },
+  { type = "bool-setting", name = "ai-crew-chatter", setting_type = "runtime-per-user", default_value = true, order = "g" },
+  { type = "bool-setting", name = "ai-crew-ada-llm", setting_type = "runtime-per-user", default_value = false, order = "f" },
+})

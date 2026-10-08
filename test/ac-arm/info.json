@@ -1,0 +1,2 @@
+{"name": "ac-arm", "version": "0.0.1", "title": "ai crew arming test", "author": "mtopfox", "factorio_version": "2.0",
+ "dependencies": ["base", "ai-crew"]}

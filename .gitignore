@@ -1,0 +1,4 @@
+test/run/
+__pycache__/
+*.pyc
+ada-chime.wav
