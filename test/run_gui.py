@@ -3,8 +3,8 @@ import json, os, shutil, subprocess, sys, time
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-# fnative: FNATIVE_DIR, else beside this repo, else inside the dev repo
-NATIVE = Path(os.environ.get("FNATIVE_DIR") or next((p for p in (ROOT.parent / "fnative", ROOT / "native") if p.exists()), ROOT / "native"))
+# fnative: FNATIVE_DIR, else an fnative/ beside a folder above this one
+NATIVE = Path(os.environ.get("FNATIVE_DIR") or next((d / "fnative" for d in ROOT.parents if (d / "fnative").exists()), ROOT / "fnative"))
 from factorio_paths import run_dir  # noqa: E402
 RUN = run_dir(HERE / "run")
 MODS, OUT = RUN / "gui-mods", RUN / "script-output"

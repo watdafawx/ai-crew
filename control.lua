@@ -32,6 +32,8 @@ local source_names = {} -- item -> names of resources/trees/rocks that yield it
 
 -- ---------------------------------------------------------------------------------------------------------------- util
 
+local map_marker -- (with hire)
+
 local function crew()
   storage.crew = storage.crew or {}
   return storage.crew
@@ -241,6 +243,12 @@ end
 
 -- ----------------------------------------------------------------------------------------------------------- moving
 
+-- its own place near pos: crew members spread round the owner instead of piling onto one point
+local function spot(m, pos)
+  local a = (m.phase or 0) * 2.4
+  return { x = pos.x + math.cos(a) * 3, y = pos.y + math.sin(a) * 3 }
+end
+
 local function stop_walk(m)
   m.move = nil
   if m.entity.valid then m.entity.walking_state = { walking = false, direction = D.north } end
@@ -297,6 +305,16 @@ local function walk(m)
   -- stuck (hardly moved for 1.5 s): ask for a new path; after three tries hop next to the goal
   if mv.last and dist2(e.position, mv.last) < 0.0004 then mv.still = mv.still + 1 else mv.still = 0 end
   mv.last = { x = e.position.x, y = e.position.y }
+  if mv.still == 20 then -- (another crew member in the way: step aside)
+    for _, o in pairs(crew()) do
+      if o ~= m and o.entity.valid and dist2(o.entity.position, e.position) < 2.25 then
+        local to = e.surface.find_non_colliding_position(e.name, { x = e.position.x + (m.phase % 2 == 0 and 1.2 or -1.2),
+          y = e.position.y + 0.6 }, 2, 0.3)
+        if to then e.teleport(to) end
+        break
+      end
+    end
+  end
   if mv.still > 90 then
     mv.hops = mv.hops + 1
     if mv.hops > 2 then
@@ -608,6 +626,7 @@ JOBS.craft = function(m, job)
   end
   if e.crafting_queue_size > 0 then return false end
   job.n = job.started
+  if job.keep then return true end -- (its own gun or ammo: equipped already)
   say(m, "Made " .. job.started .. " " .. pretty(job.recipe) .. ".")
   table.insert(m.jobs, 2, { kind = "deliver" })
   return true
@@ -622,7 +641,7 @@ end
 
 JOBS.deliver = function(m, job)
   if m.entity.get_main_inventory().is_empty() then return true end
-  if not go(m, anchor(m), 3) then return false end
+  if not go(m, spot(m, anchor(m)), 2) then return false end
   unload(m)
   return true
 end
@@ -852,7 +871,7 @@ local function goal_have(owner, item)
   for _, m in pairs(crew()) do
     if m.owner == owner and m.entity.valid then
       first = first or m
-      n = n + m.entity.get_main_inventory().get_item_count(item)
+      n = n + m.entity.get_item_count(item) -- (all its inventories: a crafted gun goes straight to the gun slot)
     end
   end
   return first and n + available(first, item) or n
@@ -1211,6 +1230,7 @@ end
 -- ----------------------------------------------------------------------------------------------------------- combat
 
 local GUNS -- hand-held guns, longest range first
+local self_craft
 
 local AMMO_OF = {} -- gun -> the ammo items it fires (its ammo categories)
 
@@ -1228,6 +1248,18 @@ local function gun_ammo(g)
     AMMO_OF[g] = list
   end
   return AMMO_OF[g]
+end
+
+-- queues hand-crafting `count` of item for itself (kept, not delivered), once; true when queued. What it lacks for it
+-- becomes the crew's need, as for any craft
+self_craft = function(m, item, count)
+  for _, j in pairs(m.jobs) do if j.kind == "craft" and j.recipe == item then return false end end
+  for _, nd in pairs(needs(m.owner)) do if nd.item == item then return false end end
+  if not handcraft_recipe(m.entity.force, item) then
+    return add_need(m.owner, item, count, "the crew's guns")
+  end
+  table.insert(m.jobs, 1, { kind = "craft", recipe = item, count = count, keep = true, n = 0, skip = {} })
+  return true
 end
 
 local function gun_range(m)
@@ -1290,6 +1322,11 @@ local function arm(m)
     end
     return can
   end
+  for i = 2, #guns do
+    if guns[i].valid_for_read and not ammo[i].valid_for_read then
+      if inv.insert(guns[i]) > 0 then guns[i].clear() end
+    end
+  end
   local cur = guns[1].valid_for_read and guns[1].name or nil
   if not (cur and (ammo[1].valid_for_read or ammo_for(cur) == 2)) then
     -- the gun to use: one to hand with ammo in stock, else one to hand whose ammo it can make, else one to make
@@ -1309,7 +1346,7 @@ local function arm(m)
         if inv.get_item_count(pick) == 0 then take(m, pick, 1) end
         if inv.get_item_count(pick) > 0 and guns[1].set_stack({ name = pick, count = 1 }) then inv.remove({ name = pick, count = 1 }) end
       else
-        if add_need(m.owner, pick, 1, "a gun for " .. m.name) then say(m, "No gun to hand. I'll make a " .. pretty(pick) .. ".") end
+        if self_craft(m, pick, 1) then say(m, "No gun to hand. I'll make myself a " .. pretty(pick) .. ".") end
         return
       end
     end
@@ -1334,7 +1371,7 @@ local function arm(m)
   elseif state == 1 and not ammo[1].valid_for_read then
     for _, am in ipairs(gun_ammo(gun)) do
       if makes(am) then
-        if add_need(m.owner, am, 20, "ammo for the " .. pretty(gun)) then say(m, "Out of ammo. Making " .. pretty(am) .. ".") end
+        if self_craft(m, am, 20) then say(m, "Out of ammo. Making " .. pretty(am) .. ".") end
         break
       end
     end
@@ -1506,7 +1543,9 @@ local function idle(m)
   end
   if not m.follow then return end
   local c = owner_char(m)
-  if c and dist2(m.entity.position, c.position) > 100 then go(m, c.position, 4) end
+  if c and dist2(m.entity.position, spot(m, c.position)) > 16 and dist2(m.entity.position, c.position) > 25 then
+    go(m, spot(m, c.position), 1.5)
+  end
 end
 
 local function think(m)
@@ -1538,6 +1577,15 @@ local function find_member(name, owner)
   for _, m in pairs(members_of(owner)) do if m.name:lower() == name:lower() then return m end end
 end
 
+-- a crew member on the map (chart view): a coloured dot with its name, following it
+map_marker = function(e, name, color)
+  rendering.draw_circle({ color = color, radius = 1.6, filled = true, target = e, surface = e.surface, render_mode = "chart" })
+  rendering.draw_circle({ color = { 0, 0, 0 }, radius = 1.6, width = 2, filled = false, target = e, surface = e.surface,
+    render_mode = "chart" })
+  rendering.draw_text({ text = name, target = { entity = e, offset = { 0, -4 } }, surface = e.surface, color = color,
+    scale = 3, alignment = "center", render_mode = "chart", scale_with_zoom = true })
+end
+
 local function hire(name, surface, position, force, owner)
   local taken = {}
   for n in pairs(crew()) do taken[n:lower()] = true end
@@ -1554,8 +1602,9 @@ local function hire(name, surface, position, force, owner)
   e.color = { r = color[1], g = color[2], b = color[3] }
   rendering.draw_text({ text = name, surface = surface, target = { entity = e, offset = { 0, -2.3 } }, color = color,
     scale = 0.9, alignment = "center" })
+  map_marker(e, name, color)
   local m = { name = name, entity = e, owner = owner, home = { x = at.x, y = at.y }, jobs = {}, color = color,
-    voice = i, follow = true, phase = i * 3 }
+    voice = i, follow = true, phase = i * 3, mapped = true }
   crew()[name] = m
   return m
 end
@@ -2319,6 +2368,10 @@ local function init()
   crew()
   storage.paths, storage.claims = storage.paths or {}, storage.claims or {}
   if not storage.seen then science_check(true) end
+  for _, m in pairs(crew()) do
+    if m.entity and m.entity.valid and not m.mapped then map_marker(m.entity, m.name, m.color) end
+    m.mapped = true
+  end
   for _, p in pairs(game.players) do
     add_button(p)
     local old = mod_gui.get_frame_flow(p).aic_panel -- (0.1's panel)

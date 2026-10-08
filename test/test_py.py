@@ -57,6 +57,23 @@ aicrew._history.clear()
 import wave  # noqa: E402
 with wave.open(aicrew.ada_chime()) as w:
     assert w.getframerate() == 44100 and 0.5 < w.getnframes() / 44100 < 2
+# a reply cut off mid-JSON (out of tokens), as seen in game: its finished parts, never the raw JSON
+cut = ('{"replies": [{"who": "Juno", "text": "First, audit your current output per minute; identify bottlenecks."}, '
+       '{"who": "Rook", "text": "I\'ll grab the plates."}], "jobs": [{"who": "Rook", "kind": "get", "item": "iron-plate", '
+       '"count": 50}, {"who": "Juno", "kind": "goal", "item": "iron-gear-wheel", "count": 200, "line": true}, {"who": "Ju')
+assert aicrew.extract_json(cut) is None
+sv = aicrew.salvage(cut)
+assert [r["who"] for r in sv["replies"]] == ["Juno", "Rook"] and sv["replies"][1]["text"] == "I'll grab the plates.", sv
+assert [j["kind"] for j in sv["jobs"]] == ["get", "goal"] and sv["jobs"][1]["line"] is True, sv
+real_chat = aicrew.chat
+aicrew.chat = lambda *a, **k: cut
+a = json.loads(aicrew.ask(json.dumps({"message": "help", "to": ["Juno"], "context": {}})))
+assert len(a["replies"]) == 2 and len(a["jobs"]) == 2, a
+aicrew.chat = lambda *a, **k: '{"replies": [{"who": "Juno", "text": "First, audit your'
+a = json.loads(aicrew.ask(json.dumps({"message": "help", "to": ["Juno"], "context": {}})))
+assert "{" not in a["replies"][0]["text"] and "audit" in a["replies"][0]["text"], a
+aicrew.chat = real_chat
+aicrew._history.clear()
 print("offline OK")
 
 if "--live" in sys.argv:

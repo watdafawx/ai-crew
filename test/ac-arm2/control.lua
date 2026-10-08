@@ -26,6 +26,7 @@ script.on_nth_tick(5, function(ev)
   chest.insert({ name = "firearm-magazine", count = 310 })
   remote.call("ai-crew", "hire", "Rook", "nauvis", { x = 3, y = 2 })
   remote.call("ai-crew", "hire", "Mara", "nauvis", { x = -3, y = 2 })
+  remote.call("ai-crew", "hire", "Juno", "nauvis", { x = 0, y = 5 })
   local mara = body("Mara")
   mara.get_inventory(G)[1].set_stack({ name = "shotgun", count = 1 })
   mara.get_inventory(A)[3].set_stack({ name = "firearm-magazine", count = 40 })
@@ -46,24 +47,37 @@ script.on_nth_tick(1800, function(ev)
   -- (hand-crafting by scripted characters isn't in the production stats: count the guns that exist)
   local function count(item)
     local n = game.surfaces.nauvis.find_entities_filtered({ name = "iron-chest" })[1].get_item_count(item)
-    for _, who in ipairs({ "Rook", "Mara" }) do
+    for _, who in ipairs({ "Rook", "Mara", "Juno" }) do
       local b = body(who)
       for _, i in ipairs({ G, defines.inventory.character_main }) do n = n + (b and b.get_inventory(i).get_item_count(item) or 0) end
     end
     return n
   end
   local smg, shot = count("submachine-gun"), count("shotgun")
-  log(string.format("t=%d Rook [%s] Mara [%s]; smgs %d shotguns %d", ev.tick, kit("Rook"), kit("Mara"), smg, shot))
+  log(string.format("t=%d Rook [%s] Mara [%s] Juno [%s]; smgs %d shotguns %d", ev.tick, kit("Rook"), kit("Mara"), kit("Juno"), smg, shot))
   local ok_r = kit("Rook"):find("^submachine%-gun/firearm%-magazine") ~= nil
   local ok_m = kit("Mara"):find("^submachine%-gun/firearm%-magazine") ~= nil
+  local ok_j = kit("Juno"):find("^submachine%-gun/firearm%-magazine %d+, %-/%-, %-/%-$") ~= nil
+  -- (three crew, idle: each its own spot, none on top of another)
+  local near = math.huge
+  local names = { "Rook", "Mara", "Juno" }
+  for i = 1, 3 do for j = i + 1, 3 do
+    local a, b = body(names[i]), body(names[j])
+    if a and b then
+      local d = math.sqrt((a.position.x - b.position.x) ^ 2 + (a.position.y - b.position.y) ^ 2)
+      near = math.min(near, d)
+    end
+  end end
   local stray = kit("Mara"):find("%-/firearm") or kit("Rook"):find("%-/firearm")
-  if not (ok_r and ok_m) and ev.tick < 36000 then return end
+  if not (ok_r and ok_m and ok_j) and ev.tick < 36000 then return end
   local checks = {
     { "Rook: submachine gun, magazines beside it", ok_r },
     { "Mara: swapped the shellless shotgun for a submachine gun", ok_m },
     { "no ammo beside an empty gun slot", not stray },
     { "no shotgun made (Mara's one still about)", shot == 1 },
-    { "one submachine gun each, no more", smg == 2 },
+    { "Juno: one submachine gun, the other gun slots empty", ok_j },
+    { "one submachine gun each, no more (3)", smg == 3 },
+    { "no two crew on one spot (closest " .. string.format("%.1f", near) .. " tiles)", near > 1.5 },
   }
   local fails = 0
   for _, k in ipairs(checks) do log((k[2] and "PASS " or "FAIL ") .. k[1]) if not k[2] then fails = fails + 1 end end

@@ -150,12 +150,30 @@ def extract_json(text):
     """the first JSON object in a model's reply (models wrap it in prose or ``` fences)"""
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
     start = text.find("{")
+    first = None
     while start != -1:
         try:
-            return json.JSONDecoder().raw_decode(text[start:])[0]
+            obj = json.JSONDecoder().raw_decode(text[start:])[0]
+            if isinstance(obj, dict) and ("replies" in obj or "jobs" in obj or "text" in obj and "who" not in obj):
+                return obj
+            first = first if first is not None else obj
         except ValueError:
-            start = text.find("{", start + 1)
-    return None
+            pass
+        start = text.find("{", start + 1)
+    return first if isinstance(first, dict) and "who" not in first else None
+
+
+def salvage(text):
+    """what can be read from a reply cut off mid-JSON (the model ran out of tokens): its finished replies and jobs"""
+    replies = [{"who": w, "text": json.loads('"' + t + '"')}
+               for w, t in re.findall(r'"who"\s*:\s*"([^"]*)"\s*,\s*"text"\s*:\s*"((?:[^"\\]|\\.)*)"', text)]
+    jobs = []
+    for m in re.finditer(r'\{[^{}]*"kind"\s*:[^{}]*\}', text):
+        try:
+            jobs.append(json.loads(m.group(0)))
+        except ValueError:
+            pass
+    return {"replies": replies, "jobs": jobs} if replies or jobs else None
 
 
 def build_messages(req):
@@ -177,10 +195,13 @@ Current state: {json.dumps(req.get("context", {}), separators=(",", ":"))}"""
 def ask(s):
     try:
         req = json.loads(s)
-        text = chat(req.get("llm") or {}, build_messages(req))
+        text = chat(req.get("llm") or {}, build_messages(req), 900)
         answer = extract_json(text)
-        if not isinstance(answer, dict):  # a model that ignored the format: speak its words
-            answer = {"replies": [{"who": (req.get("to") or [""])[0], "text": text.strip()[:300]}], "jobs": []}
+        if not isinstance(answer, dict):
+            answer = salvage(text)  # (cut off mid-JSON: the replies and jobs it finished)
+        if not isinstance(answer, dict):  # a model that ignored the format: speak its words, never raw JSON
+            words = text.strip() if "{" not in text else re.sub(r'[{}\[\]"]|\b(replies|who|text|jobs)\b\s*:?', " ", text)
+            answer = {"replies": [{"who": (req.get("to") or [""])[0], "text": " ".join(words.split())[:300]}], "jobs": []}
         _history.extend([{"role": "user", "content": req.get("message", "")},
                          {"role": "assistant", "content": json.dumps(answer)}])
         del _history[:-24]
@@ -371,7 +392,11 @@ def _say(text, voice):
     os.close(fd)
     try:
         ada = isinstance(voice, str) and voice.startswith("ada")
-        asyncio.run(edge_tts.Communicate(text, name, rate="-3%" if ada else "+4%").save(path))
+        try:
+            asyncio.run(edge_tts.Communicate(text, name, rate="-3%" if ada else "+4%").save(path))
+        except Exception as e:  # noqa: BLE001 - the online voice failed (503s happen): Windows' own voice instead
+            print(f"[aicrew] edge-tts: {e}; Windows voice instead")
+            return _say_sapi(text, ada or any(w in name for w in ("Jenny", "Sonia", "Natasha", "Emily", "Ava")))
         if ada:
             _ada_fx(path)
         _play_mp3(path)
