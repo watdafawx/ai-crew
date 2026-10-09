@@ -1,28 +1,28 @@
-"""A real client through the fnative launcher (python run_gui.py [test], default ac-gui: the window, every tab
+"""A real client through the fse launcher (python run_gui.py [test], default ac-gui: the window, every tab
 screenshotted; ac-follow: the crew follow the player through machines; ac-info: the crew's rows in the game's own
 info panel, grabbed from the game window). Results in run/script-output/<test>-*."""
 import json, os, shutil, subprocess, sys, time
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-# fnative: FNATIVE_DIR, else an fnative/ beside a folder above this one
-NATIVE = Path(os.environ.get("FNATIVE_DIR") or next((d / "fnative" for d in ROOT.parents if (d / "fnative").exists()), ROOT / "fnative"))
+# fse: FSE_DIR, else an fse/ beside a folder above this one
+NATIVE = Path(os.environ.get("FSE_DIR") or next((d / "fse" for d in ROOT.parents if (d / "fse").exists()), ROOT / "fse"))
 from factorio_paths import run_dir  # noqa: E402
 RUN = run_dir(HERE / "run")
 MODS, OUT = RUN / "gui-mods", RUN / "script-output"
 shutil.rmtree(MODS, ignore_errors=True)
 MODS.mkdir(parents=True)
 shutil.copytree(HERE.parent, MODS / "ai-crew", ignore=shutil.ignore_patterns("test", ".git", "__pycache__"))
-shutil.copytree(NATIVE / "mods" / "fnative-std", MODS / "fnative-std")
+shutil.copytree(NATIVE / "mods" / "fse-std", MODS / "fse-std")
 TEST = sys.argv[1] if len(sys.argv) > 1 else "ac-gui"
 shutil.copytree(HERE / TEST, MODS / TEST)
-names = ["base", "elevated-rails", "quality", "space-age", "fnative-std", "ai-crew", TEST]
+names = ["base", "elevated-rails", "quality", "space-age", "fse-std", "ai-crew", TEST]
 (MODS / "mod-list.json").write_text(json.dumps({"mods": [{"name": n, "enabled": True} for n in names]}))
 for f in OUT.glob(TEST + "*"):
     f.unlink()
 save = RUN / (TEST + ".zip")
 save.unlink(missing_ok=True)
-launch = [str(NATIVE / "dist" / "factorio-native.exe"), "--config", str(RUN / "config.ini"), "--mod-directory", str(MODS)]
+launch = [str(NATIVE / "dist" / "fse.exe"), "--config", str(RUN / "config.ini"), "--mod-directory", str(MODS)]
 subprocess.run(launch + ["--create", str(save)], capture_output=True)
 game = subprocess.Popen(launch + ["--load-game", str(save)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 start = time.time()

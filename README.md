@@ -3,21 +3,21 @@
 Helper characters for Factorio 2.0 that work like construction bots with legs: they build your ghosts, clear
 deconstruction marks, mine, craft, smelt, fight, and work towards goals you set (setting up furnaces, assemblers,
 power and whole production lines when they need them), all from a window in game. With the
-[fnative](https://github.com/watdafawx/fnative) loader they also chat through a free LLM, speak out loud, and ADA
+[FSE](https://github.com/watdafawx/fse) loader they also chat through a free LLM, speak out loud, and ADA
 (Satisfactory style) announces your milestones. Single player.
 
 ## Install
 
 1. Copy (or symlink) this folder into your mods folder as `ai-crew` (`%APPDATA%\Factorio\mods\ai-crew`) and enable
    "AI Crew". That's all for the crew's work, goals and combat.
-2. For chat, voices and ADA: [fnative](https://github.com/watdafawx/fnative) (start the game through its launcher,
-   install `fnative-std`), and add this folder to `FNATIVE_PYPATH` in fnative's `dist\fnative.env` (`aicrew.py` is
+2. For chat, voices and ADA: [FSE](https://github.com/watdafawx/fse) (unzip it into the game's
+   folder), and add this folder to `FSE_PYPATH` in `fse\fse.env` there (`aicrew.py` is
    loaded from there). Natural voices: `pip install edge-tts`; ADA's effects: ffmpeg (`winget install Gyan.FFmpeg`).
-3. For production lines in goals: [bpgen](https://github.com/watdafawx/bpgen) (its in-game mod and fnative).
+3. For production lines in goals: [bpgen](https://github.com/watdafawx/bpgen) (its in-game mod and FSE).
 
 ## The window
 
-The crew button (top left) opens it: movable, and resizable with fnative-std. The chat box on top (plain orders run
+The crew button (top left) opens it: movable, and resizable with fse-std. The chat box on top (plain orders run
 as is, the rest goes to the AI), then tabs:
 
 - **Crew**: whether AI chat works, each member's job with **Fight**, **Auto**, **Follow/Roam/Stay** (click to switch), **Stop**,
@@ -32,7 +32,7 @@ as is, the rest goes to the AI), then tabs:
 cursor): name and manner, what they're doing, health, Fight and Auto (and the mode when busy), armor, gun, ammo, fish and
 gun range, up to 16 things in their pockets, and their record: kills, built, trips by car or train, jetpack flights,
 times down (kept when they're rebuilt). It updates twice a second and goes when the cursor leaves them. Started
-through the fnative loader, the same goes into the game's own info panel instead, as rows under the crew member's
+through the FSE loader, the same goes into the game's own info panel instead, as rows under the crew member's
 picture (the `entityinfo` plugin), and there is no card of ours.
 
 **Auto** (on by default): with nothing queued, a crew member works like a construction bot within 48 tiles of you:
@@ -40,7 +40,7 @@ deconstruction marks first (items brought to you), then the upgrade planner's ma
 missing. Upgrades are done as a player's hand does them (fast-replace): the machine keeps its recipe and contents, a
 belt its items, everything its direction and settings, and the old piece comes back to you. Items come from your
 pockets, chests near you and your logistic network, taken directly (no walking to each chest). Everything but chat
-works without fnative.
+works without fse.
 
 **Their body.** A crew member is its own character prototype, not the player's: half as wide and shorter (0.2 x 0.2
 tiles against a player's 0.4 x 0.4), so they fit through gaps between machines that you cannot walk through, and a
@@ -52,7 +52,7 @@ twenty steps) instead of standing against it.
 
 **Goal**: an item and how many you want to have. Whenever there's nothing to build or clear, the crew plan the next
 step on their own until it's reached (ADA announces it). The AI can set goals from chat too. With **Production line**
-(needs bpgen and fnative) bpgen plans a line for it next to your base (its Extend: taps your belts or main bus where
+(needs bpgen and FSE) bpgen plans a line for it next to your base (its Extend: taps your belts or main bus where
 it can), placed as ghosts; the crew build it, power it, keep its burners fuelled, feed by hand whatever no belt
 brings (ore and coal on a lane each) and take the product off its output to you. In chat: "goal 500 iron gear wheel
 line".
@@ -152,11 +152,11 @@ Items come from your pockets, chests near you and the logistic network you stand
 (or your pockets) out of reach they walk over to first, as a player would, once a minute per place and item (the
 next few they took along on the first trip); for a ghost or an upgrade the trip comes before the walk to it. The
 logistic network still hands items over directly, as if bots brought them. What's left in their pockets after
-building they bring to you. Everything but the chat works without fnative.
+building they bring to you. Everything but the chat works without fse.
 
-## AI and voices (needs fnative)
+## AI and voices (needs FSE)
 
-`aicrew.py` (on `FNATIVE_PYPATH`) talks to any OpenAI-compatible API. Get a free key and paste it in the
+`aicrew.py` (on `FSE_PYPATH`) talks to any OpenAI-compatible API. Get a free key and paste it in the
 window's Settings tab (Save & test tells you at once whether it works); the provider is picked from it:
 
 | provider | key from | key starts |
@@ -208,7 +208,7 @@ python test/run.py ac-power 144010 headless game: an engine goal with no assembl
 python test/run.py ac-boot         headless game: from nothing, a furnace, plates, a ghost, gears, an engine
 python test/run.py ac-goal         headless game: a 10 gear goal from ore, coal and an empty furnace
 python test/run.py                 headless game: auto clear and build (crafting a missing item), mine round a wall, craft, deliver
-python test/run_gui.py             real client (fnative launcher): every tab screenshotted, Settings saved and tested, the hover card
+python test/run_gui.py             real client (FSE launcher): every tab screenshotted, Settings saved and tested, the hover card
 python test/run_gui.py ac-info     real client: the crew's rows in the game's own info panel (the game window grabbed)
 python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)
 python test/test_py.py [--live KEY] aicrew.py offline; --live asks a real provider once

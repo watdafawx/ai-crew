@@ -1,4 +1,4 @@
--- Real client (through the fnative launcher): three crew, the window on each tab, a screenshot of each, the AI test,
+-- Real client (through the fse launcher): three crew, the window on each tab, a screenshot of each, the AI test,
 -- and the card shown hovering a crew member.
 -- (no crash-site intro: it pauses the game and waits for the player to press Tab)
 script.on_init(function()

@@ -1,6 +1,6 @@
--- Real client (fnative launcher): rows of our own in the game's entity info panel (fnative plugin "entityinfo").
+-- Real client (fse launcher): rows of our own in the game's entity info panel (fse plugin "entityinfo").
 -- Rook is hired, armed and hovered; the runner grabs the game window (ac-info-screen.png): the panel under the minimap
--- with AI Crew's rows. Without the fnative loader this test can't run (the Lua card is ac-gui's).
+-- with AI Crew's rows. Without the fse loader this test can't run (the Lua card is ac-gui's).
 script.on_init(function()
   local fp = remote.interfaces["freeplay"]
   if fp then

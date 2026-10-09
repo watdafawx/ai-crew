@@ -1,7 +1,7 @@
 -- AI Crew: helper characters that build, clear, mine, hand-craft and fetch, run from a panel (the crew button, top left).
 -- Idle, each one works like a construction bot near you: clears deconstruction marks, then places ghosts, hand-crafting
 -- what it can't take from your pockets or nearby chests. Orders: get / mine / craft an item, build, clear, deliver,
--- follow, stay, stop. The panel's chat box goes to an LLM through the fnative loader (aicrew.py), which answers in
+-- follow, stay, stop. The panel's chat box goes to an LLM through the fse loader (aicrew.py), which answers in
 -- character and may queue the same jobs; plain orders typed there ("get 50 iron ore") run without it.
 --
 -- remote.call("ai-crew", ...): hire(name, surface, position, force?, owner_index?), order(owner_index, text), status(name)
@@ -2970,7 +2970,7 @@ local function order(owner, text)
   -- anything else: the LLM
   local llm = llm_settings(player)
   if not py() or llm.provider == "off" then
-    tell(player, "I only understand simple orders without the fnative loader and an AI provider.")
+    tell(player, "I only understand simple orders without the fse loader and an AI provider.")
     return help(player)
   end
   local names = {}
@@ -3286,11 +3286,11 @@ local function on_answer(p, out)
 end
 
 -- ------------------------------------------------------------------------------------------------------------ panel
--- The crew button (top left) opens a window: movable and resizable with the fnative-std library, a plain movable one
+-- The crew button (top left) opens a window: movable and resizable with the fse-std library, a plain movable one
 -- without. The chat box, then tabs: Crew, Orders, Goal, AI.
 
 local mod_gui = require("mod-gui")
-local fstd = script.active_mods["fnative-std"] and require("__fnative-std__/window") or nil
+local fstd = script.active_mods["fse-std"] and require("__fse-std__/window") or nil
 local WIN = "aic_window"
 local PROVIDER_CHOICES, TOGGLES
 local ADA_VOICES = { "ava", "jenny", "aria", "emma", "michelle" }
@@ -3335,7 +3335,7 @@ local function ai_lines(player)
   local llm = llm_settings(player)
   local out = {}
   if not py() then
-    out[1] = "[color=1,0.4,0.4]Not started through the fnative loader:[/color] chat, voices and bpgen lines are off. Orders, goals and building work."
+    out[1] = "[color=1,0.4,0.4]Not started through the fse loader:[/color] chat, voices and bpgen lines are off. Orders, goals and building work."
     return out
   end
   if llm.provider == "off" then out[1] = "Chat AI is off (provider above). Plain orders still work." return out end
@@ -3362,7 +3362,7 @@ TOGGLES = {
 
 local function ai_short(player)
   local a = ai_state[player.index]
-  if not py() then return "[color=0.7,0.7,0.7]AI chat off (no fnative loader)[/color]" end
+  if not py() then return "[color=0.7,0.7,0.7]AI chat off (no fse loader)[/color]" end
   if not a then return "[color=0.7,0.7,0.7]AI chat not tested (Settings tab)[/color]" end
   return a.ok and ("[color=0.4,1,0.4]AI chat: " .. tostring(a.provider) .. "[/color]") or "[color=1,0.4,0.4]AI chat not working (Settings tab)[/color]"
 end
@@ -3531,7 +3531,7 @@ local function build_panel(player)
   local bp = remote.interfaces["bpgen"] and remote.interfaces["bpgen"].plan_line
   r.add({ type = "checkbox", name = "aic_goal_line", caption = "Production line", state = bp and st.goal_line ~= false or false,
     enabled = bp ~= nil, tooltip = bp and "bpgen plans a line next to your base for it; the crew build, power, feed and empty it"
-      or "Needs bpgen (zzz-bpgen) and the fnative loader" })
+      or "Needs bpgen (zzz-bpgen) and the fse loader" })
   r.add({ type = "textfield", name = "aic_goal_rate", text = st.goal_rate or "30", numeric = true,
     allow_decimal = false, allow_negative = false, tooltip = "The line's rate, per minute" }).style.width = 45
   r.add({ type = "label", caption = "/min" })
@@ -3753,7 +3753,7 @@ function hover.card(player, m)
   f.location = { x = res.width - (300 + 12) * scale, y = math.floor(380 * scale) }
 end
 
--- With the fnative loader's "entityinfo" plugin the same goes into the game's own info panel as rows, and no card
+-- With the fse loader's "entityinfo" plugin the same goes into the game's own info panel as rows, and no card
 function hover.native_panel()
   if hover.native == nil then
     local ok, r = pcall(function() return native and native.call("entityinfo", "status", "") end)
@@ -4226,7 +4226,7 @@ remote.add_interface("ai-crew", {
   end,
 })
 
--- the fnative-std window's own handlers (title bar close, remembered place, resize grip), after ours
+-- the fse-std window's own handlers (title bar close, remembered place, resize grip), after ours
 if fstd then
-  require("__fnative-std__/safe").chain("ai-crew", { require("__fnative-std__/input").handlers, fstd.handlers })
+  require("__fse-std__/safe").chain("ai-crew", { require("__fse-std__/input").handlers, fstd.handlers })
 end

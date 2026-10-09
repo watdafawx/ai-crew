@@ -1,4 +1,4 @@
-"""AI Crew's in-game side (fnative `py` plugin): chat answers from a free LLM, and text to speech.
+"""AI Crew's in-game side (fse `py` plugin): chat answers from a free LLM, and text to speech.
 
 Lua calls (strings in, JSON strings out):
   aicrew:ask    {message, to: [names], llm: {provider, key, model}, context}  -> {replies: [{who, text}], jobs: [...]}

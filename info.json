@@ -1,9 +1,9 @@
 {
   "name": "ai-crew",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "title": "AI Crew",
   "author": "mtopfox",
   "factorio_version": "2.0",
-  "description": "Helper characters that build your ghosts and clear deconstruction marks on their own like construction bots (hand-crafting what is missing), and mine, craft and fetch on order, from a panel (top left). With the fnative loader they also chat through a free LLM and speak out loud, and ADA announces your milestones. Single player.",
-  "dependencies": ["base >= 2.0", "? fnative-std"]
+  "description": "Helper characters that build your ghosts and clear deconstruction marks on their own like construction bots (hand-crafting what is missing), and mine, craft and fetch on order, from a panel (top left). With the fse loader they also chat through a free LLM and speak out loud, and ADA announces your milestones. Single player.",
+  "dependencies": ["base >= 2.0", "? fse-std"]
 }
