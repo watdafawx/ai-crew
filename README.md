@@ -4,7 +4,8 @@ Helper characters for Factorio 2.0 that work like construction bots with legs: t
 deconstruction marks, mine, craft, smelt, fight, and work towards goals you set (setting up furnaces, assemblers,
 power and whole production lines when they need them), all from a window in game. With the
 [FSE](https://github.com/watdafawx/fse) loader they also chat through a free LLM, speak out loud, and ADA
-(Satisfactory style) announces your milestones. Single player.
+(Satisfactory style) announces your milestones. Single player and multiplayer (in multiplayer the AI needs every
+player and the server on FSE, with `fse-std`).
 
 ## Install
 
@@ -156,6 +157,10 @@ building they bring to you. Everything but the chat works without fse.
 
 ## AI and voices (needs FSE)
 
+**Multiplayer.** Each player's AI calls run on their own computer, with their own key and Python, and the answer
+reaches everyone through FSE's `native.sync`, so every peer applies the same reply in the same tick (no desyncs).
+Voices play on each computer for its own player's settings. A headless server needs no Python or key of its own.
+
 `aicrew.py` (on `FSE_PYPATH`) talks to any OpenAI-compatible API. Get a free key and paste it in the
 window's Settings tab (Save & test tells you at once whether it works); the provider is picked from it:
 
@@ -212,4 +217,6 @@ python test/run_gui.py             real client (FSE launcher): every tab screens
 python test/run_gui.py ac-info     real client: the crew's rows in the game's own info panel (the game window grabbed)
 python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)
 python test/test_py.py [--live KEY] aicrew.py offline; --live asks a real provider once
+python test/run_mp.py              multiplayer (fse's harness: headless server + client): two crew, an AI test and an order,
+                                   the same on both peers, no desync
 ```

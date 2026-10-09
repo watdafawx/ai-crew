@@ -276,11 +276,16 @@ local LINES = {
 }
 local ROAM = 40 -- roaming: how far from the player (or home) they wander
 
-local pending = {} -- native job id -> what to do with the answer (not saved: an answer in flight at save time is dropped)
--- player index -> the last AI test this session (not saved: a result from the last time the game ran says nothing
--- about now; it's tested again on load)
-local ai_state = {}
-local ai_checked = false
+-- AI jobs (Python: the LLM). Every peer records a job in storage the same way; only the peer of the player it is for
+-- runs it (its Python, its key) and, in multiplayer, sends the answer to all with native.sync (fse-std raises
+-- "fse-sync"), so every peer applies the same answer in the same tick. In single player the answer applies at once.
+local jobs = { running = {} } -- running: native job id -> job number (only on the peer running it); on_answer: with
+-- the panel; checked: the AI was tested this session (single player). One table: the main chunk's locals are full.
+-- player index -> the last AI test (storage.ai_tests: the panel shows it, and every peer's panel must match)
+local function ai_state()
+  storage.ai_tests = storage.ai_tests or {}
+  return storage.ai_tests
+end
 local source_names = {} -- item -> names of resources/trees/rocks that yield it
 
 -- ---------------------------------------------------------------------------------------------------------------- util
@@ -312,8 +317,52 @@ local function a_an(name) return (pretty(name):match("^[aeiou]") and "an " or "a
 
 local function py()
   if not native then return false end
+  -- (multiplayer answers travel through fse-std's sync)
+  if game.is_multiplayer() and not script.active_mods["fse-std"] then return false end
   local ok, p = pcall(native.plugins)
   return ok and p and p.py ~= nil
+end
+
+-- does this peer run the job for `owner`? (in single player: always)
+function jobs.runs_here(owner)
+  if not game.is_multiplayer() then return true end
+  return owner ~= nil and native.local_player ~= nil and native.local_player() == owner
+end
+
+function jobs.answered(n, st, out)
+  local p = storage.jobs and storage.jobs[n]
+  if not p then return end
+  storage.jobs[n] = nil
+  if st == "done" then jobs.on_answer(p, out)
+  elseif p.kind ~= "ask" then jobs.on_answer(p, "{}")
+  else
+    local player = p.owner and game.get_player(p.owner)
+    if player then player.print("[ai-crew] AI error: " .. tostring(out):sub(1, 300)) end
+  end
+end
+
+-- the answer of job n, to every peer
+function jobs.deliver(n, st, out)
+  if game.is_multiplayer() then
+    native.sync("ai-crew:answer", helpers.table_to_json({ n = n, st = st, out = out }))
+  else
+    jobs.answered(n, st, out)
+  end
+end
+
+-- a Python job for `owner` (p: what to do with the answer, plain data); false if there is no Python
+function jobs.start(owner, fn, input, p)
+  if not py() then return false end
+  storage.jobs = storage.jobs or {}
+  storage.job_n = (storage.job_n or 0) + 1
+  local n = storage.job_n
+  p.at = game.tick
+  storage.jobs[n] = p
+  if jobs.runs_here(owner) then
+    local id, err = native.start("py", fn, input)
+    if id then jobs.running[id] = n else jobs.deliver(n, "error", tostring(err)) end
+  end
+  return true
 end
 
 local function player_setting(player, name)
@@ -327,6 +376,9 @@ local function any_player()
 end
 
 local function speak(text, voice, player)
+  if game.is_multiplayer() then
+    player = native and native.local_player and native.local_player() and game.get_player(native.local_player())
+  end
   player = player or any_player()
   if not (player and py()) then return end
   if not player_setting(player, voice == "ada" and "ai-crew-ada" or "ai-crew-voices") then return end
@@ -344,9 +396,8 @@ local function ada(text)
   local p = any_player()
   if p and not player_setting(p, "ai-crew-ada") then return end
   if p and py() and player_setting(p, "ai-crew-ada-llm") then
-    local id = native.start("py", "aicrew:ada", helpers.table_to_json({ text = text, llm = llm_settings(p) }))
-    if id then
-      pending[id] = { kind = "ada", text = text }
+    if jobs.start(p.index, "aicrew:ada", helpers.table_to_json({ text = text, llm = llm_settings(p) }),
+           { kind = "ada", text = text }) then
       return
     end
   end
@@ -2975,10 +3026,8 @@ local function order(owner, text)
   end
   local names = {}
   for _, m in pairs(members) do names[#names + 1] = m.name end
-  local id, err = native.start("py", "aicrew:ask", helpers.table_to_json({ message = rest, to = names, llm = llm,
-    context = context(player, members_of(owner)) }))
-  if not id then return tell(player, "AI call failed: " .. tostring(err)) end
-  pending[id] = { kind = "ask", owner = owner, to = names }
+  jobs.start(owner, "aicrew:ask", helpers.table_to_json({ message = rest, to = names, llm = llm,
+    context = context(player, members_of(owner)) }), { kind = "ask", owner = owner, to = names })
   for _, m in pairs(members) do
     if m.bubble and m.bubble.valid then m.bubble.destroy() end
     m.bubble = rendering.draw_text({ text = "...", surface = m.entity.surface, target = { entity = m.entity, offset = { 0, -2.9 } },
@@ -3020,7 +3069,11 @@ end)
 
 -- -------------------------------------------------------------------------------------------------- AFK chatter
 
-local lines = {} -- chatter waiting its turn: {at, owner, who, text} (not saved)
+-- chatter waiting its turn: storage.lines {at, owner, who, text} (saved: a joining peer must say the same lines)
+local function queued()
+  storage.lines = storage.lines or {}
+  return storage.lines
+end
 
 -- stock chatter: one member's line (an idle thought, or a reaction to ev), sometimes another's answer
 local function canned(owner, members, ev)
@@ -3031,11 +3084,11 @@ local function canned(owner, members, ev)
   local g = storage.goals and storage.goals[owner]
   local text = ev and line(a, ev.kind, ev.vars) or g and math.random() < 0.3
     and string.format("Still on that goal: %d %s. We'll get there.", g.count, pretty(g.item)) or line(a, "idle")
-  lines[#lines + 1] = { at = game.tick + (ev and 90 or 0), owner = owner, who = a.name, text = text }
+  table.insert(queued(), { at = game.tick + (ev and 90 or 0), owner = owner, who = a.name, text = text })
   if #members > 1 and not ev and math.random() < 0.6 then
     local b
     repeat b = pick(members) until b ~= a
-    lines[#lines + 1] = { at = game.tick + 240, owner = owner, who = b.name, text = line(b, "reply", { other = a.name }) }
+    table.insert(queued(), { at = game.tick + 240, owner = owner, who = b.name, text = line(b, "reply", { other = a.name }) })
   end
 end
 
@@ -3050,9 +3103,10 @@ local function chatter(player, ev)
     local ctx = context(player, members)
     ctx.goal = storage.goals and storage.goals[player.index]
     ctx.event = ev and ev.text
-    local id = native.start("py", "aicrew:banter", helpers.table_to_json({ llm = llm, context = ctx }))
-    if id then
-      pending[id] = { kind = "banter", owner = player.index, ev = ev }
+    -- (ev's who is a member's name: plain data, as a job keeps it in storage)
+    local plain_ev = ev and { kind = ev.kind, text = ev.text, vars = ev.vars, who = type(ev.who) == "table" and ev.who.name or ev.who }
+    if jobs.start(player.index, "aicrew:banter", helpers.table_to_json({ llm = llm, context = ctx }),
+           { kind = "banter", owner = player.index, ev = plain_ev }) then
       return
     end
   end
@@ -3252,7 +3306,7 @@ local function on_answer(p, out)
   end
   if p.kind == "check" then
     if not (a.provider or a.error) then a.error = "no answer" end
-    ai_state[p.owner] = a
+    ai_state()[p.owner] = a
     return
   end
   if p.kind == "banter" then
@@ -3262,7 +3316,7 @@ local function on_answer(p, out)
     for _, r in pairs(type(a.replies) == "table" and a.replies or {}) do
       if type(r) == "table" and type(r.text) == "string" and r.text ~= "" then
         local m = find_member(r.who, p.owner) or members[1]
-        lines[#lines + 1] = { at = at, owner = p.owner, who = m.name, text = r.text:sub(1, 200) }
+        table.insert(queued(), { at = at, owner = p.owner, who = m.name, text = r.text:sub(1, 200) })
         at = at + 300
       end
     end
@@ -3284,6 +3338,8 @@ local function on_answer(p, out)
     if job then add_job(m, job) end
   end
 end
+
+jobs.on_answer = on_answer
 
 -- ------------------------------------------------------------------------------------------------------------ panel
 -- The crew button (top left) opens a window: movable and resizable with the fse-std library, a plain movable one
@@ -3331,7 +3387,7 @@ end
 
 -- the AI tab's lines: loader, provider and key, the last test, voices
 local function ai_lines(player)
-  local a = ai_state[player.index]
+  local a = ai_state()[player.index]
   local llm = llm_settings(player)
   local out = {}
   if not py() then
@@ -3361,7 +3417,7 @@ TOGGLES = {
 }
 
 local function ai_short(player)
-  local a = ai_state[player.index]
+  local a = ai_state()[player.index]
   if not py() then return "[color=0.7,0.7,0.7]AI chat off (no fse loader)[/color]" end
   if not a then return "[color=0.7,0.7,0.7]AI chat not tested (Settings tab)[/color]" end
   return a.ok and ("[color=0.4,1,0.4]AI chat: " .. tostring(a.provider) .. "[/color]") or "[color=1,0.4,0.4]AI chat not working (Settings tab)[/color]"
@@ -3369,11 +3425,10 @@ end
 
 local function check_ai(player)
   if not py() then return end
-  local id = native.start("py", "aicrew:check", helpers.table_to_json({ llm = llm_settings(player) }))
-  if id then
-    pending[id] = { kind = "check", owner = player.index }
-    ai_state[player.index] = ai_state[player.index] or {}
-    ai_state[player.index].testing = true
+  if jobs.start(player.index, "aicrew:check", helpers.table_to_json({ llm = llm_settings(player) }),
+         { kind = "check", owner = player.index }) then
+    ai_state()[player.index] = ai_state()[player.index] or {}
+    ai_state()[player.index].testing = true
   end
 end
 
@@ -3579,7 +3634,7 @@ local function build_panel(player)
   end
   tabs.selected_tab_index = math.min(st.tab or 1, 4)
 
-  if py() and not ai_state[player.index] then check_ai(player) end
+  if py() and not ai_state()[player.index] then check_ai(player) end
 end
 
 local function open_frame(player) return player.gui.screen[WIN] end
@@ -3874,6 +3929,18 @@ script.on_event(defines.events.on_gui_location_changed, function(ev)
 end)
 
 script.on_event(defines.events.on_player_created, function(ev) add_button(game.get_player(ev.player_index)) end)
+-- (multiplayer: a joining player's AI is tested by their own peer; every peer marks it as testing)
+script.on_event(defines.events.on_player_joined_game, function(ev)
+  local p = game.get_player(ev.player_index)
+  if game.is_multiplayer() and p and py() and llm_settings(p).provider ~= "off" then check_ai(p) end
+end)
+if script.active_mods["fse-std"] then
+  script.on_event("fse-sync", function(e)
+    if e.key ~= "ai-crew:answer" then return end
+    local d = helpers.json_to_table(e.data)
+    if d and d.n then jobs.answered(d.n, d.st, d.out) end
+  end)
+end
 
 -- ------------------------------------------------------------------------------------------------------- milestones
 
@@ -3952,9 +4019,10 @@ script.on_configuration_changed(function() source_names, machine_cache = {}, {} 
 
 script.on_event(defines.events.on_tick, function(ev)
   local t = ev.tick
-  if not ai_checked and t % 60 == 0 then -- (once a session, a second in: the AI tested for whoever is playing)
-    ai_checked = true
-    if storage.ai then storage.ai = nil end -- (before 0.8.0 the last test was saved, and shown stale on load)
+  if not jobs.checked and t % 60 == 0 and not game.is_multiplayer() then -- (once a session, a second in: the
+    jobs.checked = true                                                    -- AI tested for whoever is playing)
+    storage.ai = nil -- (before 0.8.0)
+    storage.ai_tests = {} -- (the last session's results say nothing about now)
     for _, p in pairs(game.connected_players) do if py() and llm_settings(p).provider ~= "off" then check_ai(p) end end
   end
   for name, m in pairs(crew()) do
@@ -3987,22 +4055,24 @@ script.on_event(defines.events.on_tick, function(ev)
       if m.retreat and not m.move and (t + m.phase) % 60 == 0 then go(m, anchor(m), 4) end
     end
   end
-  if t % 5 == 0 and next(pending) then
-    for id, p in pairs(pending) do
+  if t % 5 == 0 and next(jobs.running) then
+    for id, n in pairs(jobs.running) do
       local st, out = native.poll(id)
       if st ~= "pending" then
-        pending[id] = nil
-        if st == "done" then on_answer(p, out)
-        elseif p.kind ~= "ask" then on_answer(p, "{}")
-        else tell(p.owner and game.get_player(p.owner), "[ai-crew] AI error: " .. tostring(out):sub(1, 300)) end
+        jobs.running[id] = nil
+        jobs.deliver(n, st, out)
       end
     end
+  end
+  if t % 600 == 0 and storage.jobs then -- (a job whose peer left, or never answered)
+    for n, p in pairs(storage.jobs) do if t - p.at > 18000 then storage.jobs[n] = nil end end
   end
   if t % 30 == 0 then
     for _, p in pairs(game.connected_players) do
       refresh(p)
       if p.gui.screen.aic_card or hover.shown[p.index] then hover.show(p, hover.member_of(p.selected)) end -- (kept current)
     end
+    local lines = queued()
     for i = #lines, 1, -1 do
       local l = lines[i]
       if t >= l.at then
@@ -4184,7 +4254,7 @@ remote.add_interface("ai-crew", {
   test_path_delay = function(n) storage.path_delay = n end,
   -- (tests) a button of the window pressed
   press = function(player_index, action) act(game.get_player(player_index), action) end,
-  ai_status = function(player_index) return ai_state[player_index] end,
+  ai_status = function(player_index) return ai_state()[player_index] end,
   -- what the crew remember lately (the AI gets it): {tick, text}, oldest first
   memory = function(owner) return storage.events and storage.events[owner or 0] end,
   notes = function(owner) return storage.notes and storage.notes[owner or 0] end,
