@@ -43,6 +43,11 @@ assert "down" in json.loads(aicrew.ask("{}"))["error"]
 assert json.loads(aicrew.ada(json.dumps({"text": "Research complete."}))) == {"text": "Research complete."}
 aicrew.chat = lambda *a, **k: '{"replies":[{"who":"Rook","text":"Quiet."},{"who":"Mara","text":"Too quiet."}]}'
 assert len(json.loads(aicrew.banter(json.dumps({"context": {"crew": [{"name": "Rook"}, {"name": "Mara"}]}})))["replies"]) == 2
+# a reaction to an event: the event and the lines already said go to the model; a member not in PERSONAS gets its manner
+seen = []
+aicrew.chat = lambda llm, msgs, max_tokens=500: seen.append(msgs[0]["content"]) or '{"replies":[{"who":"Zed","text":"Ouch."}]}'
+aicrew.banter(json.dumps({"context": {"crew": [{"name": "Zed", "manner": "laconic"}], "event": "Rook was killed"}}))
+assert "Rook was killed" in seen[0] and "laconic and cool" in seen[0] and "Too quiet." in seen[0], seen[0]
 aicrew.chat = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
 assert json.loads(aicrew.banter("{}")) == {"replies": []}
 c = json.loads(aicrew.check(json.dumps({"llm": {"key": "gsk_abcdefghijklmnop"}})))

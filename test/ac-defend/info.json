@@ -1,0 +1,2 @@
+{"name": "ac-defend", "version": "0.0.1", "title": "ai crew defend test", "author": "mtopfox", "factorio_version": "2.0",
+ "dependencies": ["base", "ai-crew"]}

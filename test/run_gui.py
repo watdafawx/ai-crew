@@ -1,5 +1,6 @@
 """A real client through the fnative launcher (python run_gui.py [test], default ac-gui: the window, every tab
-screenshotted; ac-follow: the crew follow the player through machines). Results in run/script-output/<test>-*."""
+screenshotted; ac-follow: the crew follow the player through machines; ac-info: the crew's rows in the game's own
+info panel, grabbed from the game window). Results in run/script-output/<test>-*."""
 import json, os, shutil, subprocess, sys, time
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
@@ -25,8 +26,55 @@ launch = [str(NATIVE / "dist" / "factorio-native.exe"), "--config", str(RUN / "c
 subprocess.run(launch + ["--create", str(save)], capture_output=True)
 game = subprocess.Popen(launch + ["--load-game", str(save)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 start = time.time()
+
+
+def window_shot(path):
+    """the game window only, drawn by itself (PrintWindow, full content: works behind other windows and never
+    captures anything else on the screen)"""
+    import ctypes
+    from ctypes import wintypes
+    from PIL import Image
+    u, g = ctypes.windll.user32, ctypes.windll.gdi32
+    found = []
+    proc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+
+    def each(h, _):
+        buf = ctypes.create_unicode_buffer(256)
+        u.GetWindowTextW(h, buf, 256)
+        if buf.value.startswith("Factorio") and u.IsWindowVisible(h):
+            found.append(h)
+        return True
+    u.EnumWindows(proc(each), 0)
+    if not found:
+        print("no game window to grab")
+        return
+    h = found[0]
+    r = wintypes.RECT()
+    u.GetClientRect(h, ctypes.byref(r))
+    w, ht = r.right, r.bottom
+    hdc = u.GetDC(h)
+    mem = g.CreateCompatibleDC(hdc)
+    bmp = g.CreateCompatibleBitmap(hdc, w, ht)
+    g.SelectObject(mem, bmp)
+    u.PrintWindow(h, mem, 3)  # (PW_CLIENTONLY | PW_RENDERFULLCONTENT)
+    bits = ctypes.create_string_buffer(w * ht * 4)
+    hdr = (ctypes.c_uint32 * 10)(40, w, -ht, 1 | (32 << 16), 0, 0, 0, 0, 0, 0)
+    g.GetDIBits(mem, bmp, 0, ht, bits, hdr, 0)
+    Image.frombuffer("RGBA", (w, ht), bits, "raw", "BGRA", 0, 1).convert("RGB").save(path)
+    g.DeleteObject(bmp)
+    g.DeleteDC(mem)
+    u.ReleaseDC(h, hdc)
+
+
+grabbed = False
 while time.time() - start < 300 and not (OUT / (TEST + "-done.txt")).exists() and game.poll() is None:
-    time.sleep(1)
+    # a test can ask for a grab of the game window as drawn (what the game draws itself, like the info panel under the
+    # minimap, isn't in game.take_screenshot): it writes <test>-grab.txt and holds still a few seconds
+    if not grabbed and (OUT / (TEST + "-grab.txt")).exists():
+        time.sleep(0.5)
+        window_shot(OUT / (TEST + "-screen.png"))
+        grabbed = True
+    time.sleep(0.25)
 time.sleep(2)
 game.kill()
 res = OUT / (TEST + "-result.txt")

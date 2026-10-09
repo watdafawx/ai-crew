@@ -11,5 +11,7 @@ data:extend({
   { type = "string-setting", name = "ai-crew-ada-voice", setting_type = "runtime-per-user", default_value = "ava",
     allowed_values = { "ava", "jenny", "aria", "emma", "michelle" }, order = "e2" },
   { type = "bool-setting", name = "ai-crew-chatter", setting_type = "runtime-per-user", default_value = true, order = "g" },
+  { type = "bool-setting", name = "ai-crew-hints", setting_type = "runtime-per-user", default_value = true, order = "h2" },
+  { type = "bool-setting", name = "ai-crew-jetpack", setting_type = "runtime-per-user", default_value = true, order = "h" },
   { type = "bool-setting", name = "ai-crew-ada-llm", setting_type = "runtime-per-user", default_value = false, order = "f" },
 })

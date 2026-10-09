@@ -3,7 +3,7 @@
 Lua calls (strings in, JSON strings out):
   aicrew:ask    {message, to: [names], llm: {provider, key, model}, context}  -> {replies: [{who, text}], jobs: [...]}
   aicrew:ada    {text, llm}                                                 -> {text}  (ADA's line, reworded)
-  aicrew:banter {llm, context}                                              -> {replies}  (idle chatter, player AFK)
+  aicrew:banter {llm, context}       -> {replies}  (chatter: idle while the player is away, or context.event reacted to)
   aicrew:check  {llm}                       -> {provider, key (masked), source, ok, seconds, model, error, tts}
   aicrew:speak  {text, voice}   queued and spoken on a thread; returns at once
 
@@ -41,7 +41,23 @@ PERSONAS = {
     "Bolt": "eager, fast talker, always wants the next task",
     "Pip": "small, cheerful, easily impressed by big machines",
     "Sable": "laconic and cool, quietly competent",
+    "Tess": "precise and dry, keeps lists of everything",
+    "Orin": "gruff old hand, secretly fond of the biters",
 }
+MANNERS = {  # (control.lua's TRAITS: names not in PERSONAS get one of these)
+    "gruff": "gruff, dry humour", "upbeat": "upbeat and chatty", "precise": "calm, precise, a little nerdy",
+    "eager": "eager, fast talker", "cheerful": "small, cheerful, easily impressed", "laconic": "laconic and cool",
+}
+_said = []  # the crew's last lines, so the model doesn't repeat itself
+
+
+def persona(c):
+    return PERSONAS.get(c.get("name"), MANNERS.get(c.get("manner"), "a friendly helper"))
+
+
+def _note_said(replies):
+    _said.extend(r.get("text", "") for r in replies if isinstance(r, dict))
+    del _said[:-30]
 ADA = ("You are ADA, the calm, slightly dry corporate AI assistant of a factory-building pioneer (in the style of "
        "Satisfactory's ADA). Reword the announcement as ADA would say it: one or two short sentences, no emoji, keep "
        "the facts.")
@@ -56,6 +72,9 @@ JOBS_HELP = """Jobs the crew can do (use internal item names such as iron-plate,
   goal         the crew's long-term aim, worked on whenever they're free: item, count to have; "line": true to have a production
                line planned and built for it (bpgen), "rate": per minute
   attack       destroy the enemy nests (spawners, worms) near the player
+  roam         wander round the player on their own, dealing with what they find (nests, dark machines)
+  remember     keep a note where the player stands (what a place is for, a wish): "text"; "keep_out": true to keep out
+               of there (no taking from its chests, no borrowing its machines). Their notes are in the state as "notes"
   follow / stay / stop"""
 
 _models = {}  # provider -> picked model
@@ -179,16 +198,18 @@ def salvage(text):
 
 def build_messages(req):
     names = req.get("to") or []
-    crew = [c["name"] for c in req.get("context", {}).get("crew", [])] or names
-    personas = "\n".join(f"  {n}: {PERSONAS.get(n, 'a friendly helper')}" for n in crew)
+    crew = req.get("context", {}).get("crew", []) or [{"name": n} for n in names]
+    personas = "\n".join(f"  {c['name']}: {persona(c)}" for c in crew)
     system = f"""You voice the helper crew in a player's Factorio factory. Crew members:
 {personas}
 The player is talking to: {", ".join(names)}.
 {JOBS_HELP}
 Answer ONLY with a JSON object:
 {{"replies": [{{"who": "<crew name>", "text": "<what they say out loud, under 25 words>"}}],
- "jobs": [{{"who": "<crew name>", "kind": "<job>", "item": "<item name or omit>", "count": <number or omit>}}]}}
+ "jobs": [{{"who": "<crew name>", "kind": "<job>", "item": "<item name or omit>", "count": <number or omit>, "text": "<remember only>"}}]}}
 Give jobs only when the player asks for work; split work between members when it helps. Stay in character, be brief.
+Respect the player's notes (keep-out places especially). Usually only one or two of them answer, the one it concerns most; not everyone has to speak. They remember what
+happened lately ("recent" below) and may bring it up.
 Current state: {json.dumps(req.get("context", {}), separators=(",", ":"))}"""
     return [{"role": "system", "content": system}] + _history[-12:] + [{"role": "user", "content": req.get("message", "")}]
 
@@ -203,6 +224,7 @@ def ask(s):
         if not isinstance(answer, dict):  # a model that ignored the format: speak its words, never raw JSON
             words = text.strip() if "{" not in text else re.sub(r'[{}\[\]"]|\b(replies|who|text|jobs)\b\s*:?', " ", text)
             answer = {"replies": [{"who": (req.get("to") or [""])[0], "text": " ".join(words.split())[:300]}], "jobs": []}
+        _note_said(answer.get("replies") or [])
         _history.extend([{"role": "user", "content": req.get("message", "")},
                          {"role": "assistant", "content": json.dumps(answer)}])
         del _history[:-24]
@@ -249,17 +271,28 @@ def banter(s):
     req = json.loads(s)
     try:
         ctx = req.get("context", {})
-        crew = [c["name"] for c in ctx.get("crew", [])]
-        personas = "\n".join(f"  {n}: {PERSONAS.get(n, 'a friendly helper')}" for n in crew)
-        system = f"""You write idle chatter for the helper crew in a Factorio factory while the player is away from the keyboard.
+        crew = ctx.get("crew", [])
+        personas = "\n".join(f"  {c['name']}: {persona(c)}" for c in crew)
+        event = ctx.pop("event", None)
+        if event:
+            task = (f"This just happened: {event}. Write 1 or 2 lines (under 18 words each) of the crew reacting to it, "
+                    "as people would in the moment. Someone it happened to who is no longer in the crew list can't speak.")
+        else:
+            task = (f"The player is away from the keyboard. Write {'2 to 4 lines between them' if len(crew) > 1 else 'one line'} "
+                    "(under 20 words each) about what they're doing, the factory, their goal, something that happened "
+                    "lately (recent) or whatever's on their mind.")
+        said = "\n".join("  " + t for t in _said[-15:]) or "  (nothing yet)"
+        system = f"""You write chatter for the helper crew in a Factorio factory.
 Crew:
 {personas}
-Write {"2 to 4 lines between them" if len(crew) > 1 else "one line"} (under 20 words each) about what they're doing, the
-factory, their goal or whatever's on their mind. In character, light and witty, no emoji, don't repeat earlier lines.
+{task}
+In character, light and witty, no emoji. Never repeat or closely echo these lines they already said:
+{said}
 Answer ONLY with JSON: {{"replies": [{{"who": "<crew name>", "text": "<line>"}}]}}
 State: {json.dumps(ctx, separators=(",", ":"))}"""
         text = chat(req.get("llm") or {}, [{"role": "system", "content": system}, {"role": "user", "content": "(the player is away)"}], 300)
         answer = extract_json(text) or {}
+        _note_said(answer.get("replies") or [])
         return json.dumps({"replies": answer.get("replies") or []})
     except Exception as e:  # noqa: BLE001 - the game falls back to stock lines
         print(f"[aicrew] banter: {e}")
@@ -418,7 +451,7 @@ def speak(s):
     global _worker
     req = json.loads(s)
     text = (req.get("text") or "").strip()
-    if text:
+    if text and _queue.qsize() < 3:  # (a backlog is stale by the time it's spoken: dropped)
         if _worker is None or not _worker.is_alive():
             _worker = threading.Thread(target=_run, name="aicrew-tts", daemon=True)
             _worker.start()

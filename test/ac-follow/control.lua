@@ -16,7 +16,7 @@ local route, seg, pause, track = {}, 1, 0, {}
 
 local function body(name)
   local st = remote.call("ai-crew", "status", name)
-  return st and game.surfaces[1].find_entities_filtered({ name = "character", position = st.position, radius = 0.3 })[1]
+  return st and game.surfaces[1].find_entities_filtered({ type = "character", position = st.position, radius = 0.3 })[1]
 end
 
 local function shot(name) game.take_screenshot({ player = 1, path = "ac-follow-" .. name .. ".png", show_gui = false, zoom = 0.6 }) end

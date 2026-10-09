@@ -14,6 +14,9 @@ local COLORS = { { 1, 0.55, 0.2 }, { 0.3, 0.8, 1 }, { 0.6, 1, 0.4 }, { 1, 0.4, 0
 local ADA_COLOR = "1,0.62,0.2"
 local RADIUS = 48 -- the work area around the owner (or home)
 local MAX_CREW = 4
+-- the crew's own body (data-final-fixes.lua): the same character, half as wide and shorter, so they fit where a
+-- player does not
+local CREW = "crew-character"
 local ALIASES = { gear = "iron-gear-wheel", gears = "iron-gear-wheel", belt = "transport-belt", belts = "transport-belt",
   ["green-circuit"] = "electronic-circuit", ["green-circuits"] = "electronic-circuit", circuit = "electronic-circuit",
   circuits = "electronic-circuit", ["red-circuit"] = "advanced-circuit", ["red-circuits"] = "advanced-circuit",
@@ -28,12 +31,262 @@ local ACKS = { build = { "On it.", "Building.", "Let's get it up." }, deconstruc
   attack = { "Locked and loaded.", "Let's clear them out.", "Time to burn some nests." },
   upgrade = { "Upgrading.", "Swapping them out." } }
 
+-- each one's manner: picks their stock lines, and the AI is told it (aicrew.py has the same names)
+local TRAITS = { Rook = "gruff", Mara = "upbeat", Juno = "precise", Bolt = "eager", Pip = "cheerful", Sable = "laconic",
+  Tess = "precise", Orin = "gruff" }
+local TRAIT_ORDER = { "gruff", "upbeat", "precise", "eager", "cheerful", "laconic" }
+-- stock lines by event, then manner ("any" is everyone's); {item}, {n} and {other} are filled in. A member goes
+-- through every line of an event before one comes round again
+local LINES = {
+  hello = {
+    gruff = { "Right. Where's the work.", "Another factory. Fine. Point me at it." },
+    upbeat = { "Hi! Oh, this place has potential.", "Reporting in! Let's make it shine." },
+    precise = { "Online. Checking the ratios already.", "Present. Show me the bottleneck." },
+    eager = { "Here! What's first? Anything. Give me anything.", "Ready, ready, ready." },
+    cheerful = { "Hello! Is that a furnace? I love furnaces.", "Hi! Wow, it's big out here." },
+    laconic = { "Here.", "Ready when you are." },
+    any = { "Reporting for duty.", "Where do you need me?" },
+  },
+  bye = {
+    gruff = { "Fine. I'll be off." }, upbeat = { "Aw. It was fun! Bye!" }, precise = { "Logging off. Inventory handed over." },
+    eager = { "Already? Okay. Call me back!" }, cheerful = { "Bye! Keep the belts tidy!" }, laconic = { "See you." },
+  },
+  ack = {
+    gruff = { "Yeah, yeah. On it.", "Fine.", "Consider it done." },
+    upbeat = { "You got it!", "Love it, on my way.", "Ooh, a job!" },
+    precise = { "Understood.", "Queued.", "Acknowledged." },
+    eager = { "Already going!", "Yes! Next after that?", "On it on it on it." },
+    cheerful = { "Okay!", "Ooh, okay!", "Right away!" },
+    laconic = { "Sure.", "Mm.", "On it." },
+  },
+  contact = {
+    gruff = { "Biters. Of course.", "Here they come. Ugly as ever.", "Hostiles. Don't make me put down the wrench." },
+    upbeat = { "Uh, company!", "Biters! Okay, okay, we've got this!" },
+    precise = { "Contact, {item}.", "Hostile in range. Engaging." },
+    eager = { "Biters! Finally, some action!", "Mine! I've got this one!" },
+    cheerful = { "Eek! Biters!", "Ah! Shoo! Shoo!" },
+    laconic = { "Contact.", "Biters." },
+    any = { "Hostiles!", "Weapons free." },
+  },
+  hurt = {
+    gruff = { "Took a bite. Pulling back.", "Ow. Right, that's enough of that." },
+    upbeat = { "Okay, ouch, falling back!", "I'm hurt, back in a sec!" },
+    precise = { "Below half health. Retreating.", "Armour's failing. Withdrawing." },
+    eager = { "I'm fine! I'm not fine. Pulling back!", "Need a breather, then round two!" },
+    cheerful = { "Ow ow ow. Coming back!", "That hurt! Retreating!" },
+    laconic = { "Hit. Falling back.", "Need a minute." },
+  },
+  back = {
+    gruff = { "Rebuilt. Still annoyed.", "Back. Who's buying the fish?" },
+    upbeat = { "I'm back! Missed me?", "Good as new!" },
+    precise = { "Reconstruction complete. Resuming.", "Back online. Picking up where I left off." },
+    eager = { "Back! Round two!", "Rebuilt and ready, what did I miss?" },
+    cheerful = { "I'm back! Everything's shiny!", "Hello again!" },
+    laconic = { "Back.", "Round two." },
+  },
+  down = {
+    gruff = { "{other}'s down. Biters'll pay for that.", "Lost {other}. Watch your backs." },
+    upbeat = { "No! {other}! ...They'll be back, right?", "{other} went down. Sixty seconds, hang in there." },
+    precise = { "{other} is down. Reconstruction in sixty seconds.", "We lost {other}. Their position was overextended." },
+    eager = { "{other}! I'll cover for them!", "{other}'s down, I'll pick up their work!" },
+    cheerful = { "Oh no, {other}!", "{other}! Come back soon!" },
+    laconic = { "{other}'s down.", "Lost {other}." },
+  },
+  goal = {
+    gruff = { "{item}, done. Don't get used to it.", "There. {item}. Next?" },
+    upbeat = { "We did it! {item}, all there!", "Goal done! Look at that pile of {item}!" },
+    precise = { "Goal met: {item}. On schedule, roughly.", "{item}: target reached." },
+    eager = { "Done! What's the next goal? Bigger?", "{item}, finished! Give us another!" },
+    cheerful = { "Yay! All the {item}!", "We made so much {item}!" },
+    laconic = { "{item}. Done.", "That's the {item}." },
+  },
+  research = {
+    gruff = { "{item}. About time.", "New toys. {item}." },
+    upbeat = { "{item} is done! Ooh, what can we build now?", "Research! {item}! Love that." },
+    precise = { "{item} unlocked. That changes the build order.", "{item} complete. Noted." },
+    eager = { "{item}! Can we use it right now?", "Ooh, {item}! I want to build one!" },
+    cheerful = { "{item}! So fancy!", "We learned {item}!" },
+    laconic = { "{item}. Useful.", "Hm. {item}." },
+  },
+  roam = {
+    gruff = { "Fine. I'll go find my own work.", "Going for a walk. Don't touch my stuff." },
+    upbeat = { "Ooh, exploring! I'll see what needs doing.", "Off to have a look around!" },
+    precise = { "Surveying the area. I'll report anything off.", "Patrolling. I'll flag problems." },
+    eager = { "Free rein? Yes! I'll find things to fix!", "Going! I'll find work!" },
+    cheerful = { "Adventure!", "I'm gonna look at all the machines!" },
+    laconic = { "Having a look round.", "I'll wander." },
+  },
+  nest = {
+    gruff = { "Nest out here. Burning it.", "Biter nest. Not on my watch." },
+    upbeat = { "Found a nest! Going in!", "There's a nest over here, clearing it!" },
+    precise = { "{item} spotted. Moving to clear it.", "Nest at the edge of the base. Engaging." },
+    eager = { "A nest! Mine! I've got it!", "Nest! Going, going!" },
+    cheerful = { "A biter house! Bye, biter house!", "Found a nest! Eek, okay, going!" },
+    laconic = { "Nest. Handling it.", "Nest here." },
+  },
+  nest_unarmed = {
+    any = { "There's a nest out here. I'd want a gun before I go near it.", "Nest spotted. Not going near it bare-handed." },
+  },
+  dark = {
+    gruff = { "This {item} has no power. Running a pole to it.", "Dead {item} over here. Fixing it." },
+    upbeat = { "This {item}'s sitting in the dark! I'll wire it up.", "Poor {item}, no power. On it!" },
+    precise = { "Unpowered {item}. Extending the grid.", "{item} has no power. Connecting it." },
+    eager = { "Dark {item}! I'll run poles!", "No power here, fixing it!" },
+    cheerful = { "This {item} is sleeping! Waking it up.", "No power here! Poles, go!" },
+    laconic = { "{item}'s dark. Poles.", "No power here. Fixing." },
+  },
+  dark_note = {
+    gruff = { "This {item} is dark and I can't fix it from here.", "No power on this {item}. Not my mess." },
+    precise = { "{item} without power. Grid needs work there.", "Unpowered {item} noted." },
+    any = { "This {item} has no power.", "There's a {item} over here doing nothing. No power." },
+  },
+  starved = {
+    gruff = { "This {item} is starving. Nothing coming in.", "Idle {item}. Someone forgot an input." },
+    upbeat = { "This {item}'s waiting on ingredients.", "Hungry {item} over here!" },
+    precise = { "{item} short of inputs. That line's underfed.", "Input shortage at this {item}." },
+    eager = { "This {item} needs more stuff! Want me to feed it?", "Starved {item} here!" },
+    cheerful = { "This {item} is hungry!", "The {item} has nothing to make!" },
+    laconic = { "{item}'s starved.", "Nothing going into this {item}." },
+  },
+  backed = {
+    gruff = { "This {item}'s backed up. Output's going nowhere.", "Full {item}. Nobody's taking from it." },
+    precise = { "{item} output blocked. Downstream's not keeping up.", "Output full at this {item}." },
+    any = { "This {item} is full up. Nothing's taking its output.", "{item} backed up over here." },
+  },
+  welcome = {
+    gruff = { "There you are. Didn't touch anything. Much.", "Oh, you're back. Good, the belts missed you." },
+    upbeat = { "Welcome back! We kept things running!", "Hey, you're back! So much happened. Okay, not much." },
+    precise = { "Welcome back. Nothing critical while you were gone.", "You're back. Status: nominal." },
+    eager = { "You're back! Can we do something big now?", "Finally! What are we building?" },
+    cheerful = { "Yay, you're back!", "Hi again! I missed you!" },
+    laconic = { "Back.", "Hey." },
+  },
+  noted = {
+    gruff = { "Noted. Don't make me write it down twice.", "Fine. I'll remember." },
+    upbeat = { "Got it, noted!", "Ooh, good to know!" },
+    precise = { "Logged.", "Noted, with coordinates." },
+    eager = { "Remembered! Anything else to remember?", "Got it!" },
+    cheerful = { "I'll remember! Probably!", "Noted!" },
+    laconic = { "Noted.", "Got it." },
+  },
+  keep_out = {
+    gruff = { "Fine. Hands off. Your mess, your rules.", "Not touching it. Happy?" },
+    upbeat = { "Hands off, promise!", "Got it, we'll leave this bit alone!" },
+    precise = { "Keep-out zone logged. Radius twenty-four.", "Understood. We won't take from or touch anything here." },
+    eager = { "Won't touch a thing! Not even a little.", "Hands off! Got it!" },
+    cheerful = { "I won't touch! Even the shiny bits!", "Okay, no touching!" },
+    laconic = { "Hands off. Got it.", "Leaving it be." },
+  },
+  propose = {
+    gruff = { "We keep running out of {item}. Want me to make {n}?", "{item}'s always short. Shall I fix that?" },
+    upbeat = { "Hey, we're always short on {item}! Want me to make a big batch?", "Ooh, idea: {n} {item}? Say yes!" },
+    precise = { "{item} consumption outpaces production. Shall I make {n}?", "By my numbers we're short on {item}. Make {n}?" },
+    eager = { "Can I make {item}? We need {n}! Can I? Yes?", "{item}! We're short! Let me make some?" },
+    cheerful = { "We're out of {item} a lot. Should I make some?", "More {item}? I could make {n}!" },
+    laconic = { "Short on {item}. Want {n}?", "{item}'s short. Make some?" },
+  },
+  propose_line = {
+    gruff = { "{item} keeps running dry. Want me to put a proper line down?", "We're always short on {item}. Line for it?" },
+    upbeat = { "We're always short on {item}! Want me to set up a line for it?", "Idea! A {item} line. Yes?" },
+    precise = { "{item}: consumption exceeds production. Shall I build a line for it?", "The numbers say {item} needs a line. Build one?" },
+    eager = { "Let me build a {item} line! Please? Yes?", "{item} line? I can start right now!" },
+    cheerful = { "Ooh, can we build a {item} line? We need one!", "A {item} line would be so nice. Should I?" },
+    laconic = { "{item}'s short. Line for it?", "Want a {item} line?" },
+  },
+  declined = {
+    gruff = { "Suit yourself.", "Fine. Your factory." },
+    upbeat = { "No worries!", "Okay, maybe later!" },
+    precise = { "Understood. I'll leave it.", "Noted. Not now." },
+    eager = { "Aw. Okay. Later then!", "Okay! Something else then!" },
+    cheerful = { "Okay!", "Aw, okay." },
+    laconic = { "Sure.", "Fine." },
+  },
+  alarm = {
+    gruff = { "They're at the {item}. Moving.", "Biters on our stuff. Not today." },
+    upbeat = { "They're hitting the {item}! On my way!", "Base under attack! Coming!" },
+    precise = { "Attack on the {item}. Responding.", "Hostiles at the {item}. Engaging." },
+    eager = { "Attack! I'm going! I'm already going!", "The {item}! Hold on, I'm coming!" },
+    cheerful = { "Hey! Leave the {item} alone!", "Eek, they're attacking! Coming!" },
+    laconic = { "Attack. Going.", "On it." },
+  },
+  fishing = {
+    gruff = { "Out of fish. Going fishing. Don't laugh.", "No fish left. I'll catch some." },
+    upbeat = { "Fishing trip! We're out of fish.", "Out of fish, off to the water!" },
+    precise = { "Fish stock at zero. Restocking.", "No healing supplies. Fishing." },
+    eager = { "Fishing! I love fishing! We need fish!", "Gone fishing, back soon!" },
+    cheerful = { "Fishies! I'll get some!", "Going fishing!" },
+    laconic = { "Fishing.", "Getting fish." },
+  },
+  hint_research = {
+    gruff = { "Labs are sitting idle. {item} next, I'd say.", "Nobody's researching anything. Try {item}." },
+    upbeat = { "Ooh, nothing's being researched! How about {item}?", "Labs are bored! {item} could be fun!" },
+    precise = { "Research queue is empty. {item} is the cheapest next step.", "No research running. I'd queue {item}." },
+    eager = { "Can we research {item}? Please? The labs are doing nothing!", "{item}! Let's research {item}!" },
+    cheerful = { "The labs are napping! Maybe {item}?", "What about researching {item}?" },
+    laconic = { "No research on. {item}?", "Labs idle. {item}." },
+  },
+  hint_stall = {
+    any = { "Been a quiet few minutes. Want to pick something big to build next?",
+      "We've not built anything in a while. A new line, maybe? Just say what.",
+      "Things have gone a bit still. More smelting would never hurt." },
+  },
+  hint_starved = {
+    any = { "{n} machines making {item} are waiting on {other}.", "The {item} machines are starved: no {other} coming in ({n} of them).",
+      "Heads up: {n} {item} machines have run out of {other}." },
+  },
+  hint_power = {
+    any = { "Power's running short: {n} machines on low power. More steam engines?", "We're browning out. {n} machines on low power.",
+      "Not enough power for everything. {n} machines are slowed down." },
+  },
+  hint_dark = {
+    any = { "{n} machines near you have no power at all. Want poles run to them?", "There are {n} dark machines round here." },
+  },
+  hint_backed = {
+    any = { "{n} {item} machines are backed up: nothing takes what they make.", "The {item} output is full. {n} machines just sitting there." },
+  },
+  hint_over = {
+    any = { "We made {n} {item} in ten minutes and hardly used any. Put it to work?",
+      "Loads of {item} piling up: {n} in ten minutes, almost none used." },
+  },
+  idle = {
+    gruff = { "Back in my day we carried ore by hand. Oh wait.", "If one more belt goes sideways I'm quitting.",
+      "These biters chew through walls like they're paid to." },
+    upbeat = { "I reorganised that chest. You're welcome.", "Honestly? This base is coming along.",
+      "I love the sound of a furnace at full tilt." },
+    precise = { "Iron's running about twelve percent short, by my count.", "Someone has to say it: that belt is half empty.",
+      "I've been timing the inserters. Don't ask." },
+    eager = { "Is there more to build? There's always more to build.", "I could hand-craft a whole factory. Probably.",
+      "Can we build a train next? Please?" },
+    cheerful = { "The big drills are my favourite. They go brrr.", "I waved at a biter. It didn't wave back.",
+      "Do you think the trees mind?" },
+    laconic = { "Quiet.", "Belts hum. Nice.", "Too many trees." },
+    any = { "Quiet out here. You can hear the belts humming.", "Do you think the pioneer knows we talk when they're away?",
+      "I named that iron chest Gerald. Don't tell anyone.", "Smelting is just cooking for rocks, if you think about it.",
+      "If the pioneer asks, I was working the whole time.", "I counted the trees again. Still too many.",
+      "Biters have been quiet. I don't like it.", "One day robots will do all this. Then what do we do?" },
+  },
+  reply = {
+    gruff = { "Don't jinx it, {other}.", "Back to work, {other}.", "Mm. Sure." },
+    upbeat = { "Hah, fair!", "I was about to say the same!", "Aw, {other}." },
+    precise = { "Statistically, you're right.", "Noted, {other}.", "Debatable." },
+    eager = { "Me too! Wait, what?", "Can we fix it? Let's fix it.", "Ooh, good point, {other}!" },
+    cheerful = { "Hee. {other}, you're funny.", "Shh, they might hear you!" },
+    laconic = { "Mm-hm.", "Sure, {other}. Sure.", "Hah." },
+  },
+}
+local ROAM = 40 -- roaming: how far from the player (or home) they wander
+
 local pending = {} -- native job id -> what to do with the answer (not saved: an answer in flight at save time is dropped)
+-- player index -> the last AI test this session (not saved: a result from the last time the game ran says nothing
+-- about now; it's tested again on load)
+local ai_state = {}
+local ai_checked = false
 local source_names = {} -- item -> names of resources/trees/rocks that yield it
 
 -- ---------------------------------------------------------------------------------------------------------------- util
 
 local map_marker -- (with hire)
+local react -- (with the chatter)
 
 local function crew_built(e) -- (machines the crew put down: theirs to use)
   for _, b in pairs(storage.crew_built or {}) do if b == e then return true end end
@@ -55,6 +308,7 @@ end
 local function pick(list) return list[math.random(#list)] end
 
 local function pretty(name) return (name:gsub("-", " ")) end
+local function a_an(name) return (pretty(name):match("^[aeiou]") and "an " or "a ") .. pretty(name) end
 
 local function py()
   if not native then return false end
@@ -100,13 +354,103 @@ local function ada(text)
   speak(text, "ada")
 end
 
-local function say(m, text)
+local function trait(m) return TRAITS[m.name] or TRAIT_ORDER[(m.voice or 0) % #TRAIT_ORDER + 1] end
+
+-- a stock line for the event in m's manner, not one it said since it last went through them all
+local function line(m, event, vars)
+  local set = LINES[event]
+  local pool = {}
+  for _, l in ipairs(set[trait(m)] or {}) do pool[#pool + 1] = l end
+  for _, l in ipairs(set.any or {}) do pool[#pool + 1] = l end
+  if #pool == 0 then pool = set.upbeat or set.any end
+  m.recent = m.recent or {}
+  local used = m.recent[event] or {}
+  local fresh = {}
+  for _, l in ipairs(pool) do if not used[l] then fresh[#fresh + 1] = l end end
+  if #fresh == 0 then used, fresh = {}, pool end
+  local l = pick(fresh)
+  used[l] = true
+  m.recent[event] = used
+  return (l:gsub("{(%w+)}", function(k) return vars and vars[k] ~= nil and tostring(vars[k]) or "" end))
+end
+
+-- what happened lately, the crew's memory: the AI gets it with every request (saved; the last 20 per player)
+local function remember(owner, text)
+  storage.events = storage.events or {}
+  local k = owner or 0
+  local list = storage.events[k] or {}
+  storage.events[k] = list
+  list[#list + 1] = { tick = game.tick, text = text }
+  if #list > 20 then table.remove(list, 1) end
+end
+
+-- Your notes for the crew ("remember ...") and the places they keep out of ("keep out", "don't touch this", "hands
+-- off", "leave this alone"), saved, the AI told them all. In a keep-out zone (24 tiles round where you said it) they take
+-- nothing from chests, borrow or refuel no machine, put nothing down and don't roam; what you mark there yourself
+-- (ghosts, deconstruction, upgrades) they still do. chisle: zones count for everyone's crew, not just yours
+local ZONE = 24
+local function notes(owner)
+  storage.notes = storage.notes or {}
+  local k = owner or 0
+  storage.notes[k] = storage.notes[k] or {}
+  return storage.notes[k]
+end
+
+local function kept_out(surface, pos)
+  for _, list in pairs(storage.notes or {}) do
+    for _, n in ipairs(list) do
+      if n.keep_out and n.surface == surface.name and dist2(n.pos, pos) <= ZONE * ZONE then return true end
+    end
+  end
+  return false
+end
+
+-- Who speaks, and how loud. how: nil = news (in chat and out loud, unless someone just spoke or this one has been
+-- talking a lot: then in chat only), "quiet" = routine (a bubble over its head, nothing else), "talk" = conversation
+-- (an answer to the player, chatter: always in chat and out loud). The same news twice within 5 minutes is a bubble.
+-- turn to look at pos, standing still, as a player turns their character
+local function face(m, pos)
+  local e = m.entity
+  if m.move or not e.valid then return end
+  local d = math.floor(math.atan2(pos.x - e.position.x, -(pos.y - e.position.y)) / (math.pi / 4) + 0.5) % 8
+  pcall(function() e.direction = DIRS[d + 1] end)
+end
+
+local function say(m, text, how)
   local e = m.entity
   local c = m.color
-  game.print(string.format("[color=%g,%g,%g]%s:[/color] %s", c[1], c[2], c[3], m.name, text))
+  local p = m.owner and game.get_player(m.owner) -- (they look at you when they talk, near you)
+  local pc = p and p.valid and p.character
+  if pc and pc.surface == e.surface and dist2(pc.position, e.position) < 900 then face(m, pc.position) end
   if m.bubble and m.bubble.valid then m.bubble.destroy() end
   m.bubble = rendering.draw_text({ text = text, surface = e.surface, target = { entity = e, offset = { 0, -2.9 } },
     color = c, scale = 1.1, alignment = "center", time_to_live = 300 })
+  if how == "quiet" then return end
+  local t = game.tick
+  if how ~= "talk" then -- (any line it said in the last 5 minutes, not just the last one)
+    m.news = m.news or {}
+    if t - (m.news[text] or -18000) < 18000 then return end
+    if table_size(m.news) > 40 then
+      for k, at in pairs(m.news) do if t - at >= 18000 then m.news[k] = nil end end
+    end
+    m.news[text] = t
+    storage.crew_news = storage.crew_news or {} -- (a teammate said just this a minute ago: no need to say it again)
+    if t - (storage.crew_news[text] or -3600) < 3600 then return end
+    storage.crew_news[text] = t
+    if table_size(storage.crew_news) > 60 then
+      for k, at in pairs(storage.crew_news) do if t - at >= 3600 then storage.crew_news[k] = nil end end
+    end
+  end
+  game.print(string.format("[color=%g,%g,%g]%s:[/color] %s", c[1], c[2], c[3], m.name, text))
+  m.lines = (m.lines or 0) + 1 -- (what reached the chat, the last few: for tests)
+  m.last_lines = m.last_lines or {}
+  table.insert(m.last_lines, t .. ": " .. text)
+  if #m.last_lines > 8 then table.remove(m.last_lines, 1) end
+  -- (3 s between any two voiced lines, 20 s between one member's voiced news)
+  if how ~= "talk" and (t - (storage.voice_at or -180) < 180 or t - (m.voice_at or -1200) < 1200) then
+    return
+  end
+  storage.voice_at, m.voice_at = t, t
   speak(text, m.voice, m.owner and game.get_player(m.owner))
 end
 
@@ -148,7 +492,7 @@ end
 
 local HAND
 local function hand_categories()
-  HAND = HAND or (prototypes.entity["character"] and prototypes.entity["character"].crafting_categories) or { crafting = true }
+  HAND = HAND or (prototypes.entity[CREW] and prototypes.entity[CREW].crafting_categories) or { crafting = true }
   return HAND
 end
 
@@ -175,7 +519,9 @@ local function chests(m)
   for _, ch in pairs(m.entity.surface.find_entities_filtered({ type = { "container", "logistic-container" },
     force = m.entity.force, position = anchor(m), radius = RADIUS })) do
     local inv = ch.get_inventory(defines.inventory.chest)
-    if inv and not (ch.type == "logistic-container" and ch.logistic_network) then out[#out + 1] = inv end
+    if inv and not (ch.type == "logistic-container" and ch.logistic_network) and not kept_out(ch.surface, ch.position) then
+      out[#out + 1] = inv
+    end
   end
   return out
 end
@@ -201,7 +547,22 @@ local function available(m, item, quality, chests_only)
   return net and n + net.get_item_count(id) or n
 end
 
--- chisle: items move from the owner/chests/network straight into the crew's pockets, no walking to each chest
+-- what it took from out of reach (a chest, your pockets) it walks over to, as a player would:
+-- the items move at once and the walk comes before its next step (think). Once a minute a place and item: the
+-- next few of the same it took along on the first trip.
+-- chisle: the logistic network still hands items over directly, as if bots brought them
+local function note_visit(m, ent, item)
+  if not (ent and ent.valid) or ent == m.entity then return end
+  local e = m.entity
+  if dist2(ent.position, e.position) <= e.reach_distance * e.reach_distance then return end
+  if not m.visited or table_size(m.visited) > 200 then m.visited = {} end
+  local k = (ent.unit_number or 0) .. item
+  if game.tick - (m.visited[k] or -3600) < 3600 then return end
+  m.visited[k] = game.tick
+  m.visits = m.visits or {}
+  m.visits[#m.visits + 1] = ent
+end
+
 local function take(m, item, count, quality, chests_only)
   local inv = m.entity.get_main_inventory()
   local id = { name = item, quality = quality or "normal" }
@@ -211,7 +572,10 @@ local function take(m, item, count, quality, chests_only)
     local n = math.min(count - got, src.get_item_count(id))
     if n > 0 then
       local ins = inv.insert({ name = item, count = n, quality = id.quality })
-      if ins > 0 then src.remove({ name = item, count = ins, quality = id.quality }) end
+      if ins > 0 then
+        src.remove({ name = item, count = ins, quality = id.quality })
+        note_visit(m, src.entity_owner, item)
+      end
       got = got + ins
     end
   end
@@ -255,7 +619,7 @@ end
 local function spot(m, pos)
   local a = (m.phase or 0) * 2.4
   local want = { x = pos.x + math.cos(a) * 3, y = pos.y + math.sin(a) * 3 }
-  return m.entity.surface.find_non_colliding_position("character", want, 5, 0.5) or want
+  return m.entity.surface.find_non_colliding_position(CREW, want, 5, 0.5) or want
 end
 
 local function stop_walk(m)
@@ -270,7 +634,9 @@ end
 
 local function request_path(m)
   local e, mv = m.entity, m.move
-  local id = e.surface.request_path({ bounding_box = { { -0.35, -0.35 }, { 0.35, 0.35 } },
+  -- its own body, not a player's: a slightly larger box than the crew's so a route through a tight gap is never a
+  -- squeeze for them
+  local id = e.surface.request_path({ bounding_box = { { -0.15, -0.15 }, { 0.15, 0.15 } },
     collision_mask = e.prototype.collision_mask, start = e.position, goal = mv.goal, force = e.force,
     radius = math.max(mv.radius - 0.5, 0.5), entity_to_ignore = e, pathfind_flags = { cache = false, no_break = true } })
   storage.paths = storage.paths or {}
@@ -278,19 +644,91 @@ local function request_path(m)
   mv.path, mv.i, mv.final, mv.still = nil, 1, nil, 0
 end
 
--- true when already within radius of pos; else starts walking there
+local TRIP = 80 -- longer than this: a car or train when there's one (vehicles, below)
+local vehicle_trip, leave -- (with the vehicles)
+
+-- true when already within radius of pos; else starts walking there (or driving, riding: a long trip)
 local function go(m, pos, radius)
+  local r = m.ride
+  if r then -- in a car or on a train, or on the way to it: the goal moves along with it, else they get off
+    if dist2(r.goal, pos) < 1 then return false end
+    if dist2(m.entity.position, pos) > 40 * 40 then
+      r.goal, r.radius, r.repath = { x = pos.x, y = pos.y }, radius, true
+      return false
+    end
+    leave(m)
+  end
   if dist2(m.entity.position, pos) <= radius * radius then
     if m.move then stop_walk(m) end
     return true
   end
   if not (m.move and dist2(m.move.goal, pos) < 1) then
+    if vehicle_trip and dist2(m.entity.position, pos) > TRIP * TRIP and vehicle_trip(m, pos, radius) then return false end
     local near = m.move and dist2(m.move.goal, pos) < 64
     m.move = { goal = { x = pos.x, y = pos.y }, radius = radius, hops = near and m.move.hops or 0,
       still_total = near and m.move.still_total or 0 }
     request_path(m)
   end
   return false
+end
+
+-- no route at all (a machine's in the way, a wall of them, a whole line): step through it, a few tiles at a time, in
+-- the direction of the goal. Slower than walking and only ever onto free ground, but it gets them there in the end
+local function hop_along(m, step, tries)
+  local mv, e = m.move, m.entity
+  if mv.hop_tries and mv.hop_tries >= tries then return false end
+  local dx, dy = mv.goal.x - e.position.x, mv.goal.y - e.position.y
+  local d = math.sqrt(dx * dx + dy * dy)
+  if d < 0.5 then return false end
+  local tx, ty = e.position.x + dx / d * math.min(step, d), e.position.y + dy / d * math.min(step, d)
+  local to = e.surface.find_non_colliding_position(CREW, { x = tx, y = ty }, step + 1, 0.5)
+  if not to then return false end
+  mv.hop_tries, mv.hop_at, mv.last = (mv.hop_tries or 0) + 1, game.tick, { x = to.x, y = to.y }
+  e.teleport(to)
+  return true
+end
+
+-- Jetpack: a short flight straight over whatever is in the way (machines, walls, water, cliffs), landing on free ground
+-- near the goal, up to JET tiles at a time. Used when the pathfinder finds no route, when the route is far longer than
+-- the way straight there, when walking gets stuck, and to rush to a fight. Off (the player's "Crew jetpacks"
+-- setting): they step through blockages a few tiles at a time instead
+local JET = 32
+local function jets(m)
+  local p = m.owner and game.get_player(m.owner) or any_player()
+  return player_setting(p, "ai-crew-jetpack") ~= false
+end
+
+local function fly(m, to)
+  local e = m.entity
+  if m.fly or not jets(m) then return false end
+  if m.move and m.move.flew and dist2(m.move.goal, to) < 4 then return false end -- (once per goal: no hopping about)
+  local dx, dy = to.x - e.position.x, to.y - e.position.y
+  local d = math.sqrt(dx * dx + dy * dy)
+  if d < 2 then return false end
+  if d > JET then to, d = { x = e.position.x + dx / d * JET, y = e.position.y + dy / d * JET }, JET end
+  local land = e.surface.find_non_colliding_position(CREW, to, 8, 0.5)
+  if not land then return false end
+  d = math.sqrt(dist2(e.position, land))
+  e.walking_state = { walking = false, direction = D.north }
+  m.fly = { from = { x = e.position.x, y = e.position.y }, to = land, t0 = game.tick, ticks = math.max(math.ceil(d / 0.4), 12) }
+  m.flights = (m.flights or 0) + 1
+  if m.move then m.move.flew = true end
+  return true
+end
+
+-- each tick of a flight: along the line, a trail of smoke; landed, the walk goes on from there
+local function flight(m)
+  local f, e = m.fly, m.entity
+  local k = math.min((game.tick - f.t0) / f.ticks, 1)
+  e.teleport({ x = f.from.x + (f.to.x - f.from.x) * k, y = f.from.y + (f.to.y - f.from.y) * k })
+  if game.tick % 3 == 0 and prototypes.trivial_smoke["smoke-fast"] then e.surface.create_trivial_smoke({ name = "smoke-fast", position = e.position }) end
+  if k >= 1 then
+    m.fly = nil
+    if m.move then
+      m.move.still, m.move.still_total, m.move.hops, m.move.hop_tries = 0, 0, 0, nil
+      request_path(m)
+    end
+  end
 end
 
 local function walk(m)
@@ -306,13 +744,23 @@ local function walk(m)
     return
   end
   mv.walking = true
+  -- path_finished answers "no route" with a straight line at the goal, which only works while nothing is in the way.
+  -- Getting no closer to the goal than it has ever been for a couple of seconds means something is: step through it
+  if mv.straight then
+    local d2 = dist2(e.position, mv.goal)
+    if not mv.closest or d2 < mv.closest then mv.closest, mv.closest_at = d2, game.tick end
+    if game.tick - (mv.closest_at or 0) >= 150 then
+      mv.closest, mv.closest_at = nil, nil
+      if fly(m, mv.goal) or hop_along(m, 3, 20) then return end
+    end
+  end
   local wp = mv.path[mv.i]
   if wp and dist2(e.position, wp.position) < 0.25 then
     mv.i = mv.i + 1
     wp = mv.path[mv.i]
   end
   if not wp then
-    if mv.final or not e.surface.can_place_entity({ name = "character", position = mv.goal }) then return stop_walk(m) end
+    if mv.final or not e.surface.can_place_entity({ name = CREW, position = mv.goal }) then return stop_walk(m) end
     mv.final = true
     mv.path[mv.i] = { position = mv.goal }
     wp = mv.path[mv.i]
@@ -335,6 +783,7 @@ local function walk(m)
   end
   -- stuck a long while, even across small goal changes: hop to free ground near the goal
   if (mv.still_total or 0) > 240 then
+    if fly(m, mv.goal) then return end
     local to = e.surface.find_non_colliding_position(e.name, mv.goal, 6, 0.5)
     if to then e.teleport(to) end
     return stop_walk(m)
@@ -352,6 +801,7 @@ local function walk(m)
   if mv.still > 90 then
     mv.hops = mv.hops + 1
     if mv.hops > 2 then
+      if fly(m, mv.goal) then return end
       local to = e.surface.find_non_colliding_position(e.name, mv.goal, 6, 0.5)
       if to then e.teleport(to) end
       stop_walk(m)
@@ -365,7 +815,7 @@ end
 
 local JOBS = {}
 local low_burners -- (defined with the fuel helpers)
-local DOING_WORD = { build = "building", deconstruct = "clearing", mine = "mining", craft = "crafting",
+local DOING_WORD = { drive = "driving", defend = "defending the base", fish = "fishing", build = "building", deconstruct = "clearing", mine = "mining", craft = "crafting",
   fetch = "fetching", deliver = "delivering", smelt = "making", place = "placing", tend = "refuelling",
   feed = "feeding", collect = "collecting", attack = "attacking nests", upgrade = "upgrading" }
 
@@ -519,10 +969,13 @@ local function report(m, job, verb, reason)
   end
   table.sort(miss)
   local short = #miss > 0 and ("Out of " .. table.concat(miss, ", ", 1, math.min(#miss, 4)) .. ". I'll go get some.") or nil
-  if short and (not job.auto or short ~= m.said_short) then parts[#parts + 1] = short end
+  local news = short and (not job.auto or short ~= m.said_short)
+  if news then parts[#parts + 1] = short end
   m.said_short = short
-  if #parts > 0 then say(m, table.concat(parts, " "))
+  -- on its own (auto, a goal step) what got done is routine: only a new shortage is news
+  if #parts > 0 then say(m, table.concat(parts, " "), (job.auto or job.goal) and not news and "quiet" or nil)
   elseif not job.auto then say(m, "Nothing to " .. job.kind .. " here.") end
+  if job.n > 0 and not job.auto then remember(m.owner, m.name .. ": " .. verb:lower() .. " " .. job.n) end
   if job.auto and job.n == 0 then m.auto_wait = game.tick + 600 end -- nothing doable: look less often
 end
 
@@ -534,8 +987,16 @@ JOBS.build = function(m, job)
     local c
     g, c = next_ghost(m, job)
     job.target = g
-    if not g then report(m, job, "Built") unload(m) return true end
+    if not g then
+      report(m, job, "Built")
+      if not e.get_main_inventory().is_empty() then table.insert(m.jobs, 2, { kind = "deliver" }) end
+      return true
+    end
     if c and e.crafting_queue_size == 0 then craft_for(m, c.item, c.count, c.single) end
+    local it = place_item(g) -- (taken now: a trip to the chest comes before the walk to the ghost)
+    local have = e.get_main_inventory().get_item_count({ name = it.name, quality = it.quality })
+    if have < it.count then take(m, it.name, it.count - have, it.quality) end
+    if m.visits and m.visits[1] then return false end -- (the trip first)
   end
   if not go(m, g.position, math.max(e.build_distance - 2, 2)) then return false end
   local key = key_of(g)
@@ -550,6 +1011,8 @@ JOBS.build = function(m, job)
     if not g.valid then
       inv.remove({ name = it.name, count = it.count, quality = it.quality })
       job.n = job.n + 1
+      m.built = (m.built or 0) + 1
+      m.wait_until = game.tick + math.random(8, 20) -- (a hand's pace, not a robot's)
     end
   end
   if g.valid then job.skip[key] = true end
@@ -572,6 +1035,10 @@ JOBS.upgrade = function(m, job)
       return true
     end
     if c and e.crafting_queue_size == 0 then craft_for(m, c.item, c.count, c.single) end
+    local it = upgrade_item(t)
+    local have = e.get_main_inventory().get_item_count({ name = it.name, quality = it.quality })
+    if have < it.count then take(m, it.name, it.count - have, it.quality) end
+    if m.visits and m.visits[1] then return false end -- (the trip first)
   end
   if not go(m, t.position, math.max(e.build_distance - 2, 2)) then return false end
   local key = key_of(t)
@@ -588,6 +1055,7 @@ JOBS.upgrade = function(m, job)
     if new and new.valid then
       inv.remove({ name = it.name, count = it.count, quality = it.quality })
       job.n = job.n + 1
+      m.wait_until = game.tick + math.random(8, 20)
     else
       job.skip[key] = true
     end
@@ -624,8 +1092,10 @@ JOBS.deconstruct = function(m, job)
   if not go(m, t.position, math.max(e.reach_distance - 2, 2)) then return false end
   local key = key_of(t)
   claims()[key] = nil
+  local mt = t.prototype.mineable_properties.mining_time or 0.5
   if e.mine_entity(t, false) then
     job.n = job.n + 1
+    m.wait_until = game.tick + math.min(math.floor(mt * 40), 60) + 4 -- (taking it down takes a moment)
   elseif e.get_main_inventory().count_empty_stacks() == 0 then
     table.insert(m.jobs, 1, { kind = "deliver" }) -- pockets full: drop off, then carry on
     return false
@@ -662,10 +1132,9 @@ JOBS.mine = function(m, job)
     job.since = game.tick
   end
   job.last = cur
-  job.since = job.since or game.tick
   if job.n >= job.count then
     stop_mining(m)
-    say(m, "Got " .. job.n .. " " .. pretty(job.item) .. ".")
+    say(m, "Got " .. job.n .. " " .. pretty(job.item) .. ".", job.goal and "quiet")
     table.insert(m.jobs, 2, { kind = "deliver" })
     return true
   end
@@ -675,11 +1144,11 @@ JOBS.mine = function(m, job)
     return false
   end
   local t = job.target
-  if not (t and t.valid) or game.tick - job.since > 900 then
+  if not (t and t.valid) or job.since and game.tick - job.since > 900 then -- (15 s at it with nothing to show)
     if t and t.valid then job.skip[t.position.x .. "," .. t.position.y] = true end
     stop_mining(m)
     t = nearest_source(m, job)
-    job.target, job.since = t, game.tick
+    job.target, job.since = t, nil
     if not t then
       say(m, "No " .. pretty(job.item) .. " to mine around here." .. (job.n > 0 and (" Got " .. job.n .. ".") or ""))
       if job.n > 0 then table.insert(m.jobs, 2, { kind = "deliver" }) end
@@ -689,8 +1158,10 @@ JOBS.mine = function(m, job)
   local reach = e.resource_reach_distance -- hand mining, trees and rocks too, needs to be this close
   if not go(m, t.position, math.max(reach - 0.6, 1)) then
     m.mining = nil
+    job.since = nil -- (the time to give up on a source counts from getting there, not the trip)
     return false
   end
+  job.since = job.since or game.tick
   m.mining = t.position
   return false
 end
@@ -723,14 +1194,15 @@ JOBS.craft = function(m, job)
   if e.crafting_queue_size > 0 then return false end
   job.n = job.started
   if job.keep then return true end -- (its own gun or ammo: equipped already)
-  say(m, "Made " .. job.started .. " " .. pretty(job.recipe) .. ".")
+  say(m, "Made " .. job.started .. " " .. pretty(job.recipe) .. ".", job.goal and "quiet")
   table.insert(m.jobs, 2, { kind = "deliver" })
   return true
 end
 
 JOBS.fetch = function(m, job)
   local got = take(m, job.item, job.count, nil, true)
-  say(m, got > 0 and ("Got " .. got .. " " .. pretty(job.item) .. " from the chests.") or ("No " .. pretty(job.item) .. " in the chests."))
+  say(m, got > 0 and ("Got " .. got .. " " .. pretty(job.item) .. " from the chests.") or ("No " .. pretty(job.item) .. " in the chests."),
+    got > 0 and job.goal and "quiet" or nil)
   if got > 0 then table.insert(m.jobs, 2, { kind = "deliver" }) end
   return true
 end
@@ -799,6 +1271,7 @@ local function machines_for(m, r, item)
       end
     end
     if not in_line and p.crafting_categories[r.category] and f.status ~= defines.entity_status.no_power
+      and not kept_out(f.surface, f.position)
       and (not p.fixed_recipe or p.fixed_recipe == r.name) then
       local src, res = f.get_inventory(IN[f.type]), f.get_inventory(OUT[f.type])
       local free
@@ -839,6 +1312,175 @@ local function refuel(m, f)
     local put = f.get_fuel_inventory().insert({ name = name, count = n })
     if put > 0 then inv.remove({ name = name, count = put }) end
   end
+end
+
+
+-- -------------------------------------------------------------------------------------------------------- vehicles
+-- Long trips (over TRIP tiles). A train of yours standing at a stop within 24 tiles whose schedule goes to a stop
+-- within 60 tiles of where they're headed: they get on and ride along (its schedule left alone), and get off there.
+-- Else a car or tank of yours parked within 24 tiles with no one in it (fuelled from stock when low): they drive it
+-- along a path the pathfinder found for the car, and park it within 12 tiles of the goal. Stuck in the car for 2 s
+-- they back up; a third time, or no route for a car, they get out and go on foot (or fly) and leave cars alone for a
+-- minute.
+local R = defines.riding
+
+leave = function(m)
+  local r = m.ride
+  m.ride = nil
+  local e = m.entity
+  if not (e.valid and e.vehicle) then return end
+  local v = e.vehicle
+  if v.type == "car" then e.riding_state = { acceleration = R.acceleration.nothing, direction = R.direction.straight } end
+  v.set_driver(nil)
+  local at = e.surface.find_non_colliding_position(CREW, v.position, 6, 0.5) -- (beside it, not back where they got in)
+  if at then
+    e.teleport(at)
+    m.drop_at = at -- (and again next tick: the game puts them back where they got in once the tick is over)
+  end
+  if r and r.kind == "car" and r.car.valid and not r.car.get_driver() then -- (handbrake: it stays where they left it)
+    r.car.riding_state = { acceleration = R.acceleration.braking, direction = R.direction.straight }
+  end
+end
+
+local function taken(v)
+  for _, o in pairs(crew()) do if o.ride and (o.ride.car == v or o.ride.seat == v) then return true end end
+end
+
+-- a train standing near them going where they're going, and a free seat on it
+local function train_for(m, goal)
+  local e = m.entity
+  for _, stop in pairs(e.surface.find_entities_filtered({ type = "train-stop", force = e.force, position = e.position, radius = 24 })) do
+    local t = stop.get_stopped_train()
+    local sched = t and not t.manual_mode and t.state == defines.train_state.wait_station and t.schedule
+    for _, rec in pairs(sched and sched.records or {}) do
+      if rec.station and rec.station ~= stop.backer_name then
+        for _, to in pairs(game.train_manager.get_train_stops({ station_name = rec.station, surface = e.surface })) do
+          if dist2(to.position, goal) < 60 * 60 and dist2(to.position, goal) < dist2(e.position, goal) / 4 then
+            local seat, sd
+            for _, c in pairs(t.carriages) do
+              if not c.get_driver() and not taken(c) then
+                local d = dist2(c.position, e.position)
+                if not sd or d < sd then seat, sd = c, d end
+              end
+            end
+            if seat then return t, seat, to end
+          end
+        end
+      end
+    end
+  end
+end
+
+local function car_for(m)
+  local e = m.entity
+  local best, bd
+  for _, c in pairs(e.surface.find_entities_filtered({ type = "car", force = e.force, position = e.position, radius = 24 })) do
+    local fuel = c.get_fuel_inventory()
+    if not c.get_driver() and not c.get_passenger() and not taken(c) and (not fuel or not fuel.is_empty() or fuel_available(m)) then
+      local d = dist2(c.position, e.position)
+      if not bd or d < bd then best, bd = c, d end
+    end
+  end
+  return best
+end
+
+vehicle_trip = function(m, pos, radius)
+  if m.fly or m.retreat or game.tick < (m.no_ride or 0) then return false end
+  local goal = { x = pos.x, y = pos.y }
+  local t, seat, to = train_for(m, goal)
+  if t then
+    m.ride = { kind = "train", train = t, seat = seat, from = t.station, to = to, goal = goal, radius = radius, t0 = game.tick }
+  else
+    local car = car_for(m)
+    if not car then return false end
+    m.ride = { kind = "car", car = car, goal = goal, radius = radius, t0 = game.tick }
+  end
+  stop_walk(m)
+  m.rides = (m.rides or 0) + 1
+  return true
+end
+
+local function car_path(m)
+  local r, car = m.ride, m.ride.car
+  local id = car.surface.request_path({ bounding_box = { { -1, -1 }, { 1, 1 } }, collision_mask = car.prototype.collision_mask,
+    start = car.position, goal = r.goal, force = car.force, radius = 10, entity_to_ignore = car, path_resolution_modifier = -2,
+    pathfind_flags = { cache = false, prefer_straight_paths = true } })
+  storage.paths = storage.paths or {}
+  storage.paths[id] = m.name
+  r.path_id, r.path, r.i, r.repath = id, nil, 1, nil
+end
+
+-- each tick of a trip: walking up to the vehicle, getting in; on a train, waiting for its stop; in a car, driving
+local function riding(m)
+  local r, e = m.ride, m.entity
+  local v = r.kind == "car" and r.car or r.seat
+  if not (v and v.valid) then return leave(m) end
+  if e.vehicle ~= v then
+    if r.kind == "train" and not (r.train.valid and r.train.station) then m.move = nil return leave(m) end -- (it left)
+    if game.tick - r.t0 > 900 then m.move = nil return leave(m) end
+    if dist2(e.position, v.position) > 9 then
+      if not (m.move and dist2(m.move.goal, v.position) < 4) then
+        m.move = { goal = { x = v.position.x, y = v.position.y }, radius = 2, hops = 0, still_total = 0 }
+        request_path(m)
+      end
+      return
+    end
+    stop_walk(m)
+    if r.kind == "car" then refuel(m, v) end
+    v.set_driver(e)
+    if e.vehicle ~= v then return leave(m) end
+    r.t0 = game.tick
+    if r.kind == "car" then car_path(m) end
+    return
+  end
+  if r.kind == "train" then
+    local tr = r.train
+    r.still = tr.valid and math.abs(tr.speed) < 0.01 and not tr.station and (r.still or 0) + 1 or 0
+    if not tr.valid or tr.station == r.to or game.tick - r.t0 > 10800 or r.still > 1800 -- (standing out on the line: off)
+      or tr.station == r.from and game.tick - r.t0 > 3600 then -- (a minute aboard and it hasn't left: off again)
+      if tr.valid and tr.station ~= r.to then m.no_ride = game.tick + 3600 end
+      leave(m)
+    end
+    return
+  end
+  local car = v
+  if r.repath then car_path(m) end
+  local d2 = dist2(car.position, r.goal)
+  if d2 < 12 * 12 or r.failed then
+    if math.abs(car.speed) > 0.02 then
+      e.riding_state = { acceleration = R.acceleration.braking, direction = R.direction.straight }
+      return
+    end
+    if r.failed then m.no_ride = game.tick + 3600 end
+    return leave(m)
+  end
+  if not r.path then
+    e.riding_state = { acceleration = R.acceleration.braking, direction = R.direction.straight }
+    return
+  end
+  local wp = r.path[r.i]
+  while wp and dist2(car.position, wp.position) < 16 do
+    r.i = r.i + 1
+    wp = r.path[r.i]
+  end
+  local to = wp and wp.position or r.goal
+  local want = (math.atan2(to.x - car.position.x, -(to.y - car.position.y)) / (2 * math.pi)) % 1
+  local diff = (want - car.orientation + 0.5) % 1 - 0.5
+  local dir = diff > 0.01 and R.direction.right or diff < -0.01 and R.direction.left or R.direction.straight
+  if r.back_until and game.tick < r.back_until then -- (backing out of something, wheel the other way)
+    e.riding_state = { acceleration = R.acceleration.reversing,
+      direction = dir == R.direction.right and R.direction.left or dir == R.direction.left and R.direction.right or dir }
+    return
+  end
+  r.slow = math.abs(car.speed) < 0.01 and (r.slow or 0) + 1 or 0
+  if r.slow > 120 then
+    r.slow, r.backs = 0, (r.backs or 0) + 1
+    if r.backs > 2 then r.failed = true return end
+    r.back_until = game.tick + 45
+    return
+  end
+  local braking = (math.abs(diff) > 0.2 and car.speed > 0.12) or (d2 < 30 * 30 and car.speed > 0.2)
+  e.riding_state = { acceleration = braking and R.acceleration.braking or R.acceleration.accelerating, direction = dir }
 end
 
 -- loads machines near the owner with the ingredients (and fuel; the recipe when it's an assembler), then collects
@@ -902,7 +1544,7 @@ JOBS.smelt = function(m, job)
     return false
   end
   if busy and job.n < job.count and game.tick - job.since < 3600 then return false end
-  say(m, "Made " .. job.n .. " " .. pretty(job.item) .. ".")
+  say(m, "Made " .. job.n .. " " .. pretty(job.item) .. ".", job.goal and "quiet")
   table.insert(m.jobs, 2, { kind = "deliver" })
   return true
 end
@@ -913,7 +1555,7 @@ low_burners = function(m, limit)
   local out = {}
   for _, f in pairs(e.surface.find_entities_filtered({ type = { "boiler", "furnace", "mining-drill", "assembling-machine",
     "burner-generator", "inserter", "lab" }, force = e.force, position = anchor(m), radius = 150 })) do
-    if needs_fuel(f) then out[#out + 1] = f end
+    if needs_fuel(f) and not kept_out(f.surface, f.position) then out[#out + 1] = f end
   end
   table.sort(out, function(a, b) return dist2(e.position, a.position) < dist2(e.position, b.position) end)
   for i = #out, limit + 1, -1 do out[i] = nil end
@@ -946,6 +1588,7 @@ local function free_spot(s, force, name, near, clear)
           local pos = { x = cx + dx + ox, y = cy + dy + oy }
           -- (count_entities_filtered's invert would invert the force too: the player's own buildings then didn't count)
           if s.can_place_entity({ name = name, position = pos, force = force, build_check_type = defines.build_check_type.manual })
+            and not kept_out(s, pos)
             and not players_stuff(s, force, { { pos.x - w / 2 - clear, pos.y - h / 2 - clear }, { pos.x + w / 2 + clear, pos.y + h / 2 + clear } })
             and s.count_entities_filtered({ area = { { pos.x - w / 2 - 1, pos.y - h / 2 - 1 }, { pos.x + w / 2 + 1, pos.y + h / 2 + 1 } },
               force = force, type = { "furnace", "assembling-machine", "electric-pole", "boiler", "generator", "offshore-pump" }, limit = 1 }) == 0 then
@@ -1004,7 +1647,7 @@ JOBS.place = function(m, job)
       storage.crew_built = storage.crew_built or {}
       table.insert(storage.crew_built, built)
     end
-    if not job.quiet then say(m, "Set up a " .. pretty(job.item) .. ".") end
+    say(m, "Set up a " .. pretty(job.item) .. ".", "quiet")
   end
   return true
 end
@@ -1394,7 +2037,7 @@ local function ask_line(m, g)
   end
   g.line = { state = "asked", tick = game.tick }
   remote.call("bpgen", "plan_line", p and p.index or m.owner, g.item, g.rate or 30, "ai-crew")
-  say(m, "Asking bpgen for a " .. pretty(g.item) .. " line.")
+  say(m, "Asking bpgen for a " .. pretty(g.item) .. " line.", "quiet")
 end
 
 -- ----------------------------------------------------------------------------------------------------------- combat
@@ -1424,7 +2067,12 @@ end
 -- becomes the crew's need, as for any craft
 self_craft = function(m, item, count)
   for _, j in pairs(m.jobs) do if j.kind == "craft" and j.recipe == item then return false end end
-  for _, nd in pairs(needs(m.owner)) do if nd.item == item then return false end end
+  -- (already working for it, or for what it's made of: not again; and one try a minute, so a craft short of its
+  -- ingredients isn't started, given up and started again every half second)
+  for _, nd in pairs(needs(m.owner)) do if nd.item == item or nd.reason == pretty(item) then return false end end
+  m.crafted_at = m.crafted_at or {}
+  if game.tick - (m.crafted_at[item] or -3600) < 3600 then return false end
+  m.crafted_at[item] = game.tick
   if not handcraft_recipe(m.entity.force, item) then
     return add_need(m.owner, item, count, "the crew's guns")
   end
@@ -1552,7 +2200,8 @@ end
 local function fight(m)
   local e = m.entity
   local hp = e.health / e.max_health
-  if hp < 0.7 and prototypes.item["raw-fish"] then -- a fish heals, as a player's would
+  -- a fish heals 80, as a player's would: eaten whenever that much is missing (in a fight or after it), sooner when low
+  if (e.max_health - e.health >= 80 or hp < 0.5) and prototypes.item["raw-fish"] then
     local inv = e.get_main_inventory()
     if inv.get_item_count("raw-fish") == 0 and available(m, "raw-fish") > 0 then take(m, "raw-fish", 5) end
     if inv.get_item_count("raw-fish") > 0 and game.tick >= (m.fish_at or 0) then
@@ -1569,7 +2218,7 @@ local function fight(m)
     e.shooting_state = { state = defines.shooting.not_shooting, position = e.position }
     stop_mining(m)
     go(m, anchor(m), 4)
-    say(m, pick({ "I'm hurt, falling back!", "Taking a beating, pulling back!", "Need a breather!" }))
+    say(m, line(m, "hurt"))
     return
   end
   if m.defend == false and not (m.jobs[1] and m.jobs[1].kind == "attack") then m.target = nil return end
@@ -1578,11 +2227,31 @@ local function fight(m)
     arm(m)
     range = gun_range(m)
   end
-  local enemy = range > 0 and not m.retreat and e.surface.find_nearest_enemy({ position = e.position, max_distance = range, force = e.force })
+  -- the target: of the biters in range the most hurt (finish it off), else the nearest of anything
+  local enemy
+  if range > 0 and not m.retreat then
+    local low
+    for _, u in pairs(e.surface.find_enemy_units(e.position, range, e.force)) do
+      local r = u.health / u.max_health
+      if not low or r < low then enemy, low = u, r end
+    end
+    enemy = enemy or e.surface.find_nearest_enemy({ position = e.position, max_distance = range, force = e.force })
+  end
+  -- a biter (a melee one) right on it: step back and keep shooting
+  if enemy and enemy.type == "unit" and not m.move then
+    local close = e.surface.find_enemy_units(e.position, 3.5, e.force)[1]
+    local ap = close and close.prototype.attack_parameters
+    if close and ap and ap.range < 3 then
+      local dx, dy = e.position.x - close.position.x, e.position.y - close.position.y
+      local d = math.max(math.sqrt(dx * dx + dy * dy), 0.1)
+      local to = e.surface.find_non_colliding_position(CREW, { x = e.position.x + dx / d * 6, y = e.position.y + dy / d * 6 }, 3, 0.5)
+      if to then go(m, to, 1) end
+    end
+  end
   if enemy and not m.target then
     if not m.said_fight or game.tick - m.said_fight > 1800 then
       m.said_fight = game.tick
-      say(m, pick({ "Contact!", "Hostiles!", "Biters, here we go.", "Weapons free." }))
+      say(m, line(m, "contact", { item = pretty(enemy.name) }))
     end
   end
   m.target = enemy
@@ -1590,6 +2259,96 @@ local function fight(m)
     local ammo = e.get_inventory(defines.inventory.character_ammo)
     if ammo and ammo.get_item_count() < 5 then arm(m) end
   end
+end
+
+-- Your buildings under attack: every armed fighter of the crew within 160 tiles drops what it's doing and rushes
+-- over (flying, with jetpacks), fights there until it has been quiet for 5 seconds, then goes back to its work
+local function alarm(surface, force, ent)
+  local pos = ent.position
+  for _, m in pairs(crew()) do
+    local e = m.entity
+    if e.valid and e.force == force and e.surface == surface and m.defend ~= false and not m.retreat
+      and dist2(e.position, pos) < 160 * 160 and not (m.jobs[1] and (m.jobs[1].kind == "defend" or m.jobs[1].kind == "attack")) then
+      if gun_range(m) == 0 then arm(m) end
+      if gun_range(m) > 0 then
+        stop_mining(m)
+        table.insert(m.jobs, 1, { kind = "defend", at = { x = pos.x, y = pos.y }, n = 0, skip = {} })
+        m.wait_until = nil
+        if game.tick - (storage.alarm_said or -3600) > 1800 then
+          storage.alarm_said = game.tick
+          say(m, line(m, "alarm", { item = pretty(ent.name) }))
+          remember(m.owner, "biters attacked the " .. pretty(ent.name) .. "; the crew went to fight them")
+        end
+      end
+    end
+  end
+end
+
+JOBS.defend = function(m, job)
+  local e = m.entity
+  if m.retreat then return false end
+  if gun_range(m) == 0 then return true end
+  local enemy = e.surface.find_nearest_enemy({ position = job.at, max_distance = 32, force = e.force })
+  local d2 = dist2(e.position, enemy and enemy.position or job.at)
+  if enemy then
+    job.quiet = nil
+    if d2 > 24 * 24 and fly(m, enemy.position) then return false end -- (rushing there)
+    go(m, enemy.position, math.max(gun_range(m) - 4, 4)) -- (in range of it; fight() does the shooting)
+    return false
+  end
+  job.quiet = job.quiet or game.tick
+  if game.tick - job.quiet > 300 then return true end
+  if d2 > 24 * 24 and fly(m, job.at) then return false end
+  go(m, job.at, 8)
+  return false
+end
+
+-- raw fish from the water, caught by hand (5 a fish) when the crew have none left to heal with
+JOBS.fish = function(m, job)
+  local e = m.entity
+  job.t0 = job.t0 or game.tick
+  local have = e.get_main_inventory().get_item_count("raw-fish")
+  if have >= job.count or game.tick - job.t0 > 3600 then -- (enough, or a minute at it: what it has will do)
+    if have < job.count then m.fish_wait = game.tick + 18000 end
+    say(m, "Caught " .. have .. " fish.", "quiet")
+    return true
+  end
+  local f = job.target
+  if not (f and f.valid) then
+    f = nil
+    for _, r in ipairs({ 48, 120, 250 }) do
+      local bd
+      for _, c in pairs(e.surface.find_entities_filtered({ type = "fish", position = e.position, radius = r, limit = 60 })) do
+        if not job.skip[key_of(c)] then
+          local d = dist2(e.position, c.position)
+          if not bd or d < bd then f, bd = c, d end
+        end
+      end
+      if f then break end
+    end
+    if not f then
+      m.fish_wait = game.tick + 36000
+      say(m, "No fish anywhere near. We'll have to manage without.")
+      return true
+    end
+    job.target, job.target_at = f, game.tick
+  end
+  -- out in the water: as close as the shore gets them is close enough when it's in reach; 15 s without: another fish
+  local reach = e.reach_distance
+  local near = dist2(e.position, f.position) <= reach * reach
+  if not near then
+    if game.tick - job.target_at > 900 then
+      job.skip[key_of(f)], job.target = true, nil
+      stop_walk(m)
+    else
+      go(m, f.position, math.max(reach - 2, 2))
+    end
+    return false
+  end
+  if not e.mine_entity(f, false) then job.skip[key_of(f)] = true end
+  m.wait_until = game.tick + 30
+  job.target = nil
+  return false
 end
 
 -- destroys enemy spawners and worms near the owner, nearest first; the shooting is fight()'s
@@ -1605,7 +2364,7 @@ JOBS.attack = function(m, job)
     if job.target then job.n = job.n + 1 end
     t = nil
     local bd
-    for _, c in pairs(e.surface.find_entities_filtered({ type = { "unit-spawner", "turret" }, position = anchor(m), radius = job.radius or 96 })) do
+    for _, c in pairs(e.surface.find_entities_filtered({ type = { "unit-spawner", "turret" }, position = job.center or anchor(m), radius = job.radius or 96 })) do
       if e.force.is_enemy(c.force) then
         local d = dist2(e.position, c.position)
         if not bd or d < bd then t, bd = c, d end
@@ -1614,6 +2373,7 @@ JOBS.attack = function(m, job)
     job.target = t
     if not t then
       say(m, job.n > 0 and ("Cleared " .. job.n .. " nest" .. (job.n > 1 and "s" or "") .. ".") or "No nests around here.")
+      if job.n > 0 then remember(m.owner, m.name .. " cleared " .. job.n .. " nest" .. (job.n > 1 and "s" or "")) end
       return true
     end
   end
@@ -1635,11 +2395,12 @@ local function goal_step(m)
     if not is_need then
       goals()[key] = nil
       ada("Goal reached: " .. g.count .. " " .. pretty(g.item) .. ". Well done, pioneer.")
+      react(m.owner, "goal", "goal reached: " .. g.count .. " " .. pretty(g.item), { item = pretty(g.item) })
       return
     end
     table.remove(list, 1)
     for _, o in pairs(crew()) do if o.owner == m.owner then o.auto_wait = nil end end -- the blueprint can go on
-    say(m, "Got the " .. pretty(g.item) .. (g.reason and (" for " .. g.reason) or "") .. ".")
+    say(m, "Got the " .. pretty(g.item) .. (g.reason and (" for " .. g.reason) or "") .. ".", "quiet")
     if g.after then
       g.after.n, g.after.skip = 0, {}
       m.jobs[#m.jobs + 1] = g.after
@@ -1686,6 +2447,100 @@ local function goal_step(m)
   return true
 end
 
+-- --------------------------------------------------------------------------------------------------------- roaming
+-- Roam: instead of following, each one wanders the area round the player (or home) on its own, stops a while to look
+-- around, and deals with what it finds as a player would: goes after a nest when it's armed and may fight, runs poles
+-- to a machine standing dark (pole by pole, while poles are all it takes) and mentions machines starved of inputs or
+-- backed up. Each thing once; those remarks at most every 3 minutes a member.
+
+local S = defines.entity_status
+local REMARKS = {}
+for name, kind in pairs({ item_ingredient_shortage = "starved", no_ingredients = "starved", fluid_ingredient_shortage = "starved",
+  full_output = "backed", waiting_for_space_in_destination = "backed" }) do
+  if S[name] then REMARKS[S[name]] = kind end
+end
+
+-- one look round where it stands; true when it found something to do or say
+local function notice(m)
+  local e = m.entity
+  local s = e.surface
+  m.noticed = m.noticed or {}
+  if table_size(m.noticed) > 300 then m.noticed = {} end
+  local function new(x)
+    local k = key_of(x)
+    if m.noticed[k] then return false end
+    m.noticed[k] = true
+    return true
+  end
+  for _, n in pairs(s.find_entities_filtered({ type = { "unit-spawner", "turret" }, position = e.position, radius = 32 })) do
+    if e.force.is_enemy(n.force) and new(n) then
+      local armed = m.defend ~= false and gun_range(m) > 0
+      say(m, line(m, armed and "nest" or "nest_unarmed", { item = pretty(n.name) }))
+      remember(m.owner, m.name .. " found " .. a_an(n.name) .. (armed and " and went after it" or ", but had no gun"))
+      if armed then m.jobs[#m.jobs + 1] = { kind = "attack", n = 0, skip = {}, center = n.position, radius = 24 } end
+      return true
+    end
+  end
+  local remark = game.tick >= (m.remark_at or 0)
+  for _, f in pairs(s.find_entities_filtered({ type = { "assembling-machine", "furnace", "lab", "mining-drill" }, force = e.force,
+    position = e.position, radius = 20 })) do
+    local st = f.status
+    local kind = st == S.no_power and "dark" or REMARKS[st]
+    if kind and kept_out(s, f.position) then kind = nil end
+    if kind and (remark or kind == "dark") and new(f) then
+      local job = kind == "dark" and m.auto ~= false and power_to(m, f, 0)
+      if job and job.kind == "place" then
+        m.powering, m.power_steps = f, 1
+        job.n, job.skip = 0, {}
+        m.jobs[#m.jobs + 1] = job
+      elseif kind == "dark" then
+        if not remark then return false end
+        kind = "dark_note"
+      end
+      say(m, line(m, kind, { item = pretty(f.name) }))
+      remember(m.owner, m.name .. " found " .. a_an(f.name) .. ({ dark = " with no power and ran poles to it",
+        dark_note = " with no power", starved = " short of inputs", backed = " with its output backed up" })[kind])
+      if kind ~= "dark" then m.remark_at = game.tick + 10800 end
+      return true
+    end
+  end
+end
+
+local function roam(m)
+  local e = m.entity
+  local c = owner_char(m)
+  local center = c and c.position or m.home
+  local f = m.powering -- the next pole to a dark machine, while that's all it takes
+  if f then
+    m.powering = nil
+    if f.valid and f.status == S.no_power and m.power_steps < 12 then
+      local job = power_to(m, f, 0)
+      if job and job.kind == "place" then
+        m.powering, m.power_steps = f, m.power_steps + 1
+        job.n, job.skip = 0, {}
+        m.jobs[#m.jobs + 1] = job
+        return
+      end
+    end
+  end
+  if dist2(e.position, center) > (ROAM + 16) ^ 2 then -- (the player went off: catch up)
+    m.roam_walk = nil
+    go(m, spot(m, center), 8)
+    return
+  end
+  if m.roam_walk then -- got there: a look round, then a while here
+    m.roam_walk = nil
+    m.roam_at = game.tick + math.random(300, 900)
+    if notice(m) then return end
+  end
+  if game.tick < (m.roam_at or 0) then return end
+  local a, r = math.random() * 2 * math.pi, 6 + math.random() * (ROAM - 6)
+  local to = e.surface.find_non_colliding_position(CREW, { x = center.x + math.cos(a) * r, y = center.y + math.sin(a) * r }, 8, 0.5)
+  if not to or kept_out(e.surface, to) then m.roam_at = game.tick + 120 return end
+  m.roam_walk = true
+  go(m, to, 1.5)
+end
+
 -- with nothing queued: like a construction bot (marks, then ghosts near the owner), then the goal, then follow
 local function idle(m)
   if game.tick >= (m.next_scan or 0) then
@@ -1706,13 +2561,38 @@ local function idle(m)
     end
     if game.tick >= (m.tend_at or 0) then
       m.tend_at = game.tick + 600
-      if fuel_available(m) and #low_burners(m, 1) > 0 then
-        m.jobs[1] = { kind = "tend", auto = true, n = 0, skip = {} }
+      if #low_burners(m, 1) > 0 then
+        if fuel_available(m) then
+          m.jobs[1] = { kind = "tend", auto = true, n = 0, skip = {} }
+          return
+        end
+        -- burners running dry and no fuel anywhere: go and get some (coal, else wood), then fuel them
+        local item = game.tick >= (m.fuel_hunt or 0) and (nearest_source(m, { item = "coal", skip = {} }) and "coal" or "wood")
+        m.fuel_hunt = item and game.tick + 18000 or m.fuel_hunt -- (one try every 5 minutes)
+        if item and add_need(m.owner, item, 20, "the burners", { kind = "tend", auto = true }) then
+          say(m, "The burners are running dry and we're out of fuel. Getting some " .. pretty(item) .. ".")
+        end
+      end
+    end
+    -- no fish to heal with: go fishing (fighters only, every 30 s at most)
+    if m.defend ~= false and prototypes.item["raw-fish"] and game.tick >= (m.fish_wait or 0) then
+      m.fish_wait = game.tick + 1800
+      local e = m.entity
+      if e.get_main_inventory().get_item_count("raw-fish") + available(m, "raw-fish") < 5
+        and e.surface.count_entities_filtered({ type = "fish", position = e.position, radius = 250, limit = 1 }) > 0 then
+        say(m, line(m, "fishing"))
+        m.jobs[1] = { kind = "fish", count = 20, auto = true, n = 0, skip = {} }
         return
       end
     end
     if goal_step(m) then return end
   end
+  if not m.move and game.tick >= (m.glance_at or 0) then -- standing about: look round now and then, mostly at you
+    m.glance_at = game.tick + math.random(240, 600)
+    local c, p = owner_char(m), m.entity.position
+    face(m, c and math.random() < 0.6 and c.position or { x = p.x + math.random(-5, 5), y = p.y + math.random(-5, 5) })
+  end
+  if m.roam then return roam(m) end
   if not m.follow then return end
   local c = owner_char(m)
   if c and dist2(m.entity.position, spot(m, c.position)) > 16 and dist2(m.entity.position, c.position) > 25 then
@@ -1721,6 +2601,18 @@ local function idle(m)
 end
 
 local function think(m)
+  if game.tick < (m.wait_until or 0) then return end -- (a moment's pause: reacting, putting something down)
+  local v = m.visits and m.visits[1] -- a place it took something from: over there first, a moment at it
+  if v then
+    if not v.valid or go(m, v.position, math.max(m.entity.reach_distance - 2, 2)) then
+      table.remove(m.visits, 1)
+      if v.valid then
+        face(m, v.position)
+        m.wait_until = game.tick + math.random(10, 20)
+      end
+    end
+    return
+  end
   local job = m.jobs[1]
   if not job then return idle(m) end
   if job.kind ~= "mine" and m.mining then stop_mining(m) end
@@ -1766,8 +2658,8 @@ local function hire(name, surface, position, force, owner)
     name = name or ("Crew" .. (table_size(crew()) + 1))
   end
   if taken[name:lower()] then return nil, name .. " is already on the crew." end
-  local at = surface.find_non_colliding_position("character", position, 10, 0.5) or position
-  local e = surface.create_entity({ name = "character", position = at, force = force })
+  local at = surface.find_non_colliding_position(CREW, position, 10, 0.5) or position
+  local e = surface.create_entity({ name = CREW, position = at, force = force })
   if not e then return nil, "No room to spawn a crew member." end
   local i = table_size(crew())
   local color = COLORS[i % #COLORS + 1]
@@ -1809,15 +2701,18 @@ local function job_for(m, kind, item, count, extra)
     return { kind = kind }
   elseif kind == "attack" then
     return { kind = "attack" }
-  elseif kind == "follow" or kind == "stay" or kind == "stop" then
+  elseif kind == "follow" or kind == "stay" or kind == "stop" or kind == "roam" then
     return { kind = kind }
+  elseif kind == "remember" then
+    local text = extra and type(extra.text) == "string" and extra.text or type(item) == "string" and item
+    return text and text ~= "" and { kind = "remember", text = text:sub(1, 200), keep_out = extra and extra.keep_out and true } or nil
   end
 end
 
 local VERBS = { build = "build", construct = "build", clear = "deconstruct", deconstruct = "deconstruct", upgrade = "upgrade",
   demolish = "deconstruct", remove = "deconstruct", mine = "mine", gather = "get", collect = "get", get = "get",
   fetch = "get", bring = "get", grab = "get", craft = "craft", make = "craft", follow = "follow", come = "follow",
-  stay = "stay", wait = "stay", stop = "stop", goal = "goal", aim = "goal", attack = "attack", fight = "attack",
+  stay = "stay", wait = "stay", stop = "stop", roam = "roam", wander = "roam", explore = "roam", patrol = "roam", goal = "goal", aim = "goal", attack = "attack", fight = "attack",
   kill = "attack", halt = "stop", cancel = "stop", deliver = "deliver", unload = "deliver" }
 
 -- a plain command ("get 50 iron ore", "build") -> kind, item words, count; nil for anything else
@@ -1831,7 +2726,7 @@ local function parse(text)
   if kind == "build" or kind == "deconstruct" or kind == "stop" or kind == "stay" or kind == "deliver" or kind == "attack" or kind == "upgrade" then
     return #words <= 2 and kind or nil -- "build" / "clear it" / "stop now", nothing longer
   end
-  if kind == "follow" then return (#words <= 2) and kind or nil end
+  if kind == "follow" or kind == "roam" then return (#words <= 2) and kind or nil end
   local count
   for i, w in ipairs(words) do
     if tonumber(w) then count = tonumber(w) table.remove(words, i) break end
@@ -1844,22 +2739,34 @@ end
 local function add_job(m, job)
   if job.kind == "stop" then
     for _, j in pairs(m.jobs) do if j.target and j.target.valid and j.target.unit_number then claims()[j.target.unit_number] = nil end end
-    m.jobs = {}
+    m.jobs, m.visits = {}, nil
     stop_walk(m)
     stop_mining(m)
   elseif job.kind == "follow" then
-    m.follow = true
+    m.follow, m.roam = true, nil
+  elseif job.kind == "roam" then
+    m.follow, m.roam, m.roam_at = false, true, nil
+    remember(m.owner, m.name .. " went roaming")
+  elseif job.kind == "remember" then
+    add_note(m.owner, m, job.text, job.keep_out)
   elseif job.kind == "need" then
     add_need(m.owner, job.item, job.count, "you")
   elseif job.kind == "goal" then
     goals()[m.owner or 0] = { item = job.item, count = job.count, use_line = job.use_line, rate = job.rate }
     m.goal_wait = nil
   elseif job.kind == "stay" then
-    m.follow = false
+    m.follow, m.roam = false, nil
     stop_walk(m)
   else
     job.n, job.skip = 0, {}
-    m.jobs[#m.jobs + 1] = job
+    -- an order comes before what they took on themselves (auto work, goal steps, fishing): after earlier orders
+    local i = 1
+    while m.jobs[i] and not (m.jobs[i].auto or m.jobs[i].goal) do i = i + 1 end
+    table.insert(m.jobs, i, job)
+    if i == 1 and m.jobs[2] then -- (dropping what it was on: stop walking there)
+      stop_walk(m)
+      stop_mining(m)
+    end
   end
 end
 
@@ -1873,8 +2780,22 @@ local function context(player, members)
   for _, m in pairs(members) do
     local inv = {}
     for _, it in pairs(m.entity.get_main_inventory().get_contents()) do inv[it.name] = (inv[it.name] or 0) + it.count end
-    ctx.crew[#ctx.crew + 1] = { name = m.name, doing = m.jobs[1] and m.jobs[1].kind or (m.follow and "following" or "waiting"),
-      queued = #m.jobs, carrying = inv }
+    ctx.crew[#ctx.crew + 1] = { name = m.name, manner = trait(m), queued = #m.jobs, carrying = inv,
+      doing = m.jobs[1] and m.jobs[1].kind or (m.roam and "roaming" or m.follow and "following" or "waiting") }
+  end
+  local recent = {}
+  for _, ev in ipairs(storage.events and player and storage.events[player.index] or {}) do
+    recent[#recent + 1] = math.floor((game.tick - ev.tick) / 3600) .. " min ago: " .. ev.text
+  end
+  ctx.recent = recent
+  local offer = storage.proposals and player and storage.proposals[player.index]
+  ctx.open_offer = offer and ("the crew offered to " .. (offer.use_line and "build a production line for " or ("make " .. offer.count .. " "))
+    .. offer.item .. "; if the player agrees, give a goal job for it") or nil
+  local c0 = player and player.character
+  ctx.notes = {}
+  for _, n in ipairs(player and notes(player.index) or {}) do
+    ctx.notes[#ctx.notes + 1] = (n.keep_out and "keep out of here: " or "") .. n.text .. string.format(" (at %d, %d%s)", n.pos.x, n.pos.y,
+      c0 and string.format("; %d tiles from the player", math.sqrt(dist2(n.pos, c0.position))) or "")
   end
   local c = player and player.character
   if c then
@@ -1903,6 +2824,66 @@ end
 
 local function tell(player, text) if player then player.print(text) else log("[ai-crew] " .. text) end end
 
+-- a note where the player stands (home without one); keep: a keep-out zone, drawn on their map
+local function add_note(owner, m, text, keep)
+  local player = owner and game.get_player(owner)
+  local c = player and player.character
+  local pos, surface = c and c.position or m.home, c and c.surface or m.entity.surface
+  local list = notes(owner)
+  local n = { text = text, pos = { x = math.floor(pos.x), y = math.floor(pos.y) }, surface = surface.name, keep_out = keep or nil }
+  if keep then
+    n.mark = rendering.draw_circle({ color = { 1, 0.3, 0.2, 0.6 }, radius = ZONE, width = 3, filled = false, target = pos,
+      surface = surface, render_mode = "chart", players = player and { player } or nil })
+  end
+  list[#list + 1] = n
+  if #list > 30 then
+    local old = table.remove(list, 1)
+    if old.mark and old.mark.valid then old.mark.destroy() end
+  end
+end
+
+local KEEP_OUT = { "^keep out", "^stay out", "^don'?t touch", "^hands off", "^leave .*alone" }
+local function keep_out_cmd(cmd)
+  for _, p in ipairs(KEEP_OUT) do if cmd:find(p) then return true end end
+end
+
+-- "remember <anything>", "keep out" (and the like), "forget" (all, a number, here), "notes"
+local function note_order(owner, player, m, cmd, rest)
+  local list = notes(owner)
+  local verb = cmd:match("^(%S+)")
+  if verb == "notes" then
+    if #list == 0 then return tell(player, "No notes. Try \"remember the north is for iron\", \"keep out\" (here), \"forget\".") end
+    for i, n in ipairs(list) do tell(player, string.format("%d. %s%s (at %d, %d)", i, n.keep_out and "[keep out] " or "", n.text, n.pos.x, n.pos.y)) end
+    return
+  end
+  if verb == "forget" then
+    local what = cmd:match("^forget%s*(.-)%s*$")
+    local c = player and player.character
+    local pos = c and c.position or m.home
+    local before = #list
+    for i = #list, 1, -1 do
+      local n = list[i]
+      if what == "" or what == "all" or what == "everything" or tonumber(what) == i
+        or (what == "here" or what == "this") and dist2(n.pos, pos) <= ZONE * ZONE then
+        if n.mark and n.mark.valid then n.mark.destroy() end
+        table.remove(list, i)
+      end
+    end
+    return say(m, before > #list and line(m, "noted") or "Nothing to forget.", "talk")
+  end
+  local keep = keep_out_cmd(cmd)
+  local text = keep and rest or rest:gsub("^%S+%s*", "")
+  if text == "" then return end
+  add_note(owner, m, text, keep)
+  say(m, line(m, keep and "keep_out" or "noted"), "talk")
+end
+
+-- answers to the crew's offer (proposals, below)
+local YES = { yes = true, yeah = true, yep = true, y = true, sure = true, ok = true, okay = true, ["do it"] = true, please = true,
+  ["go ahead"] = true, ["go for it"] = true, ["yes please"] = true, ["sounds good"] = true }
+local NO = { no = true, nope = true, nah = true, n = true, ["no thanks"] = true, ["not now"] = true, later = true }
+local function answer_of(cmd) return (cmd:lower():gsub("[%.!,]", ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+
 -- one order: "crew <what>" for everyone, "<Name> <what>" for one member
 local function order(owner, text)
   local player = owner and game.get_player(owner)
@@ -1916,6 +2897,23 @@ local function order(owner, text)
     if not m then return tell(player, "No crew member called " .. who .. ".") end
     members = { m }
   end
+  local offer = storage.proposals and storage.proposals[owner or 0]
+  local ans = answer_of(cmd)
+  if offer and #members > 0 and (YES[ans] or NO[ans]) then
+    storage.proposals[owner or 0] = nil
+    local m = members[1]
+    if YES[ans] then
+      goals()[owner or 0] = { item = offer.item, count = offer.count, use_line = offer.use_line, rate = offer.rate }
+      for _, o in pairs(members_of(owner)) do o.goal_wait = nil end
+      remember(owner, "the player agreed: goal " .. offer.count .. " " .. pretty(offer.item) .. (offer.use_line and " with a line" or ""))
+      return say(m, line(m, "ack"), "talk")
+    end
+    storage.declined = storage.declined or {}
+    storage.declined[owner or 0] = storage.declined[owner or 0] or {}
+    storage.declined[owner or 0][offer.item] = game.tick
+    remember(owner, "the player said no to doing something about " .. pretty(offer.item))
+    return say(m, line(m, "declined"), "talk")
+  end
   -- management
   local verb, arg = cmd:match("^(%S+)%s*(%S*)")
   if all and (verb == "hire" or verb == "recruit") then
@@ -1926,11 +2924,12 @@ local function order(owner, text)
     local m, err = hire(name and (name:sub(1, 1):upper() .. name:sub(2)), c.surface, c.position, c.force, owner)
     if not m then return tell(player, err) end
     ada("New crew member registered: " .. m.name .. ".")
-    return say(m, pick({ "Reporting for duty.", "Ready to work.", "Where do you need me?" }))
+    remember(owner, m.name .. " joined the crew")
+    return say(m, line(m, "hello"), "talk")
   elseif all and (verb == "fire" or verb == "dismiss") then
     local m = find_member(arg, owner)
     if not m then return tell(player, "No crew member called " .. arg .. ".") end
-    say(m, "See you around.")
+    say(m, line(m, "bye"), "talk")
     unload(m)
     if m.entity.valid then m.entity.destroy() end
     crew()[m.name] = nil
@@ -1938,7 +2937,7 @@ local function order(owner, text)
   elseif all and (verb == "list" or verb == "status") or verb == "status" then
     if #members == 0 then return tell(player, "No crew yet: press Hire in the crew window.") end
     for _, m in pairs(members) do
-      tell(player, m.name .. ": " .. (m.jobs[1] and m.jobs[1].kind or (m.follow and "following" or "waiting")) ..
+      tell(player, m.name .. ": " .. (m.jobs[1] and m.jobs[1].kind or (m.roam and "roaming" or m.follow and "following" or "waiting")) ..
         (#m.jobs > 1 and (" (+" .. (#m.jobs - 1) .. " queued)") or ""))
     end
     return
@@ -1948,20 +2947,23 @@ local function order(owner, text)
       " for " .. (all and "the crew" or members[1].name) .. ".")
   elseif verb == "help" or cmd == "" then
     return help(player)
+  elseif #members > 0 and (verb == "remember" or verb == "note" or verb == "notes" or verb == "forget" or keep_out_cmd(cmd)) then
+    return note_order(owner, player, members[1], cmd, rest)
   end
   if #members == 0 then return tell(player, "No crew yet: press Hire in the crew window.") end
   -- plain commands run without the LLM
   local kind, item, count = parse(rest)
   if kind then
     local targets = members
-    if not (kind == "build" or kind == "deconstruct" or kind == "stop" or kind == "follow" or kind == "stay" or kind == "deliver" or kind == "attack" or kind == "upgrade") then
+    if not (kind == "build" or kind == "deconstruct" or kind == "stop" or kind == "follow" or kind == "roam" or kind == "stay" or kind == "deliver" or kind == "attack" or kind == "upgrade") then
       targets = { busiest_last(members) }
     end
     for i, m in ipairs(targets) do
       local job = job_for(m, kind, item, count)
       if not job then return tell(player, "I don't know an item called \"" .. tostring(item) .. "\".") end
       add_job(m, job)
-      if i == 1 then say(m, pick(ACKS[job.kind] or ACKS.build)) end
+      m.wait_until = game.tick + math.random(20, 60) -- (a moment to take it in, as anyone would)
+      if i == 1 then say(m, ACKS[job.kind] and math.random() < 0.5 and pick(ACKS[job.kind]) or line(m, job.kind == "roam" and "roam" or "ack")) end
     end
     return
   end
@@ -1984,52 +2986,260 @@ local function order(owner, text)
   end
 end
 
+-- normal chat (T), as you'd talk to another player: a message starting with a crew member's name ("Rook, get coal")
+-- goes to them, "crew ..." (all, everyone, guys, team) to everyone, a name later on ("thanks Rook") to that one. With
+-- nobody else in the game, anything else goes to whoever is nearest (when it's an order, or there's an AI to answer)
+local CALL_ALL = { crew = true, all = true, everyone = true, guys = true, team = true }
+local function hear(owner, text)
+  local members = members_of(owner)
+  if #members == 0 or text:sub(1, 1) == "/" then return end
+  local first, rest = text:match("^%s*([%w]+)[,:!]?%s*(.*)$")
+  if not first then return end
+  if rest == "" then rest = text end
+  if CALL_ALL[first:lower()] then return order(owner, "crew " .. rest) end
+  if find_member(first, owner) then return order(owner, first .. " " .. rest) end
+  local low = text:lower()
+  for _, m in pairs(members) do
+    if low:find("%f[%a]" .. m.name:lower() .. "%f[%A]") then return order(owner, m.name .. " " .. text) end
+  end
+  if #game.connected_players > 1 then return end
+  local player = owner and game.get_player(owner)
+  local llm = llm_settings(player)
+  local word = low:match("^%s*(%S+)")
+  local meant = parse(text) or keep_out_cmd(low) or word == "remember" or word == "forget" or word == "notes"
+    or storage.proposals and storage.proposals[owner or 0] and (YES[answer_of(text)] or NO[answer_of(text)])
+  if not (meant or py() and llm.provider ~= "off") then return end
+  local c = player and player.character
+  if c then table.sort(members, function(a, b) return dist2(a.entity.position, c.position) < dist2(b.entity.position, c.position) end) end
+  order(owner, members[1].name .. " " .. text)
+end
+
+script.on_event(defines.events.on_console_chat, function(ev)
+  if ev.player_index and ev.message then hear(ev.player_index, ev.message) end
+end)
+
 -- -------------------------------------------------------------------------------------------------- AFK chatter
 
-local IDLE_LINES = {
-  "Quiet out here. You can hear the belts humming.",
-  "Do you think the pioneer knows we talk when they're away?",
-  "I counted the trees again. Still too many.",
-  "One more hand-crafted gear wheel and I'm asking for a transfer.",
-  "Biters have been quiet. I don't like it.",
-  "I've been thinking about spaghetti. The belt kind.",
-  "One day robots will do all this. Then what do we do?",
-  "I named that iron chest Gerald. Don't tell anyone.",
-  "Smelting is just cooking for rocks, if you think about it.",
-  "If the pioneer asks, I was working the whole time.",
-}
-local REPLIES = { "Don't jinx it.", "Hah. Fair.", "Back to work, %s.", "I was about to say the same.", "Mm-hm.",
-  "You worry too much, %s.", "Shh, they might hear you.", "Sure, %s. Sure." }
 local lines = {} -- chatter waiting its turn: {at, owner, who, text} (not saved)
 
-local function canned(owner, members)
-  local a = pick(members)
+-- stock chatter: one member's line (an idle thought, or a reaction to ev), sometimes another's answer
+local function canned(owner, members, ev)
+  local pool = {}
+  for _, m in pairs(members) do if not (ev and ev.who == m.name) then pool[#pool + 1] = m end end
+  if #pool == 0 then return end
+  local a = pick(pool)
   local g = storage.goals and storage.goals[owner]
-  local text = g and math.random() < 0.4 and string.format("Still on that goal: %d %s. We'll get there.", g.count, pretty(g.item))
-    or pick(IDLE_LINES)
-  lines[#lines + 1] = { at = game.tick, owner = owner, who = a.name, text = text }
-  if #members > 1 then
+  local text = ev and line(a, ev.kind, ev.vars) or g and math.random() < 0.3
+    and string.format("Still on that goal: %d %s. We'll get there.", g.count, pretty(g.item)) or line(a, "idle")
+  lines[#lines + 1] = { at = game.tick + (ev and 90 or 0), owner = owner, who = a.name, text = text }
+  if #members > 1 and not ev and math.random() < 0.6 then
     local b
     repeat b = pick(members) until b ~= a
-    lines[#lines + 1] = { at = game.tick + 240, owner = owner, who = b.name, text = string.format(pick(REPLIES), a.name) }
+    lines[#lines + 1] = { at = game.tick + 240, owner = owner, who = b.name, text = line(b, "reply", { other = a.name }) }
   end
 end
 
--- while the player is away: the crew talk among themselves (the LLM writes it when there's one, else canned lines)
-local function chatter(player)
+-- the crew talk among themselves: while the player is away (ev nil), or a reaction to something that happened
+-- (ev = {kind = a LINES event, text = what happened, vars, who = the one it happened to}). The LLM writes it when
+-- there's one, else stock lines
+local function chatter(player, ev)
   local members = members_of(player.index)
   if #members == 0 then return end
   local llm = llm_settings(player)
   if py() and llm.provider ~= "off" then
     local ctx = context(player, members)
     ctx.goal = storage.goals and storage.goals[player.index]
+    ctx.event = ev and ev.text
     local id = native.start("py", "aicrew:banter", helpers.table_to_json({ llm = llm, context = ctx }))
     if id then
-      pending[id] = { kind = "banter", owner = player.index }
+      pending[id] = { kind = "banter", owner = player.index, ev = ev }
       return
     end
   end
-  canned(player.index, members)
+  canned(player.index, members, ev)
+end
+
+-- Proposals. Every 10 minutes, with no goal and nothing needed: they look at what your factory used more of than it
+-- made in the last 10 minutes (items with a recipe), and offer to deal with the worst of it: make a batch, or a
+-- production line when bpgen is there. "yes" (sure, ok, do it...) makes it the goal; "no" leaves that item alone for
+-- half an hour. Unanswered, the offer lapses after 5 minutes.
+local function shortage(owner, surface, force)
+  local stats = force.get_item_production_statistics(surface)
+  local declined = storage.declined and storage.declined[owner or 0] or {}
+  local best, bd
+  for name in pairs(stats.output_counts) do
+    local r = force.recipes[name]
+    if r and r.enabled and prototypes.item[name] and game.tick - (declined[name] or -1e9) > 108000 then
+      local function flow(cat)
+        return stats.get_flow_count({ name = name, category = cat, precision_index = defines.flow_precision_index.ten_minutes, count = true })
+      end
+      local d = flow("output") - flow("input")
+      if d > 0 and (not bd or d > bd) then best, bd = name, d end
+    end
+  end
+  return best, bd
+end
+
+local function propose(owner)
+  local members = members_of(owner)
+  local k = owner or 0
+  storage.proposals = storage.proposals or {}
+  if #members == 0 or storage.proposals[k] or goals()[k] or #needs(owner) > 0 then return end
+  local m = members[1]
+  local item, d = shortage(owner, m.entity.surface, m.entity.force)
+  if not item or d < 20 then return end
+  local bp = remote.interfaces["bpgen"] and remote.interfaces["bpgen"].plan_line and true or nil
+  local offer = { item = item, count = math.min(math.max(math.ceil(d / 50) * 50, 100), 2000), use_line = bp,
+    rate = math.max(math.ceil(d / 50) * 5, 10), at = game.tick }
+  storage.proposals[k] = offer
+  local what = bp and ("build a production line for " .. pretty(item)) or ("make " .. offer.count .. " " .. pretty(item))
+  remember(owner, "offered to " .. what .. " (" .. math.floor(d) .. " more used than made in 10 minutes)")
+  local ev = { kind = bp and "propose_line" or "propose", vars = { item = pretty(item), n = offer.count },
+    text = "the crew noticed " .. pretty(item) .. " runs short (" .. math.floor(d) .. " more used than made in 10 minutes). "
+      .. "One of them asks the player, in one line, whether to " .. what .. ": a yes/no question" }
+  local player = owner and game.get_player(owner)
+  if player then chatter(player, ev) else canned(owner, members, ev) end
+end
+
+-- Hints. What a player at your side would point out, said in chat and out loud by the member nearest you: research
+-- to start, machines starved of an ingredient (which one), power running short, machines with none, smelting or
+-- mining backed up, something made far beyond what's used, and after 5 minutes with nothing built, crafted or
+-- researched, what to do next (research, else an offer to make what runs short). One every 5 minutes at most, the same
+-- one not again for half an hour; the AI words them when there is one. Setting: "Crew give hints".
+local function cheapest_tech(force)
+  local best, bc
+  for _, t in pairs(force.technologies) do
+    if t.enabled and not t.researched and not t.prototype.hidden and t.research_unit_count > 0 then
+      local ok = true
+      for _, pre in pairs(t.prerequisites) do if not pre.researched then ok = false break end end
+      local cost = t.research_unit_count * #t.research_unit_ingredients
+      if ok and (not bc or cost < bc) then best, bc = t, cost end
+    end
+  end
+  return best
+end
+
+-- the ingredient a machine of this recipe is out of
+local function missing_input(f)
+  local r = f.get_recipe()
+  local inv = f.get_inventory(defines.inventory.crafter_input or defines.inventory.assembling_machine_input)
+  if not (r and inv) then return end
+  for _, ing in pairs(r.ingredients) do
+    if ing.type == "item" and inv.get_item_count(ing.name) < ing.amount then return ing.name end
+  end
+end
+
+local function find_hint(owner, surface, force, at)
+  local h = {}
+  -- machines round you, grouped by what's wrong with them
+  local starved, backed, low, dark = {}, {}, 0, 0
+  for _, f in pairs(surface.find_entities_filtered({ type = { "assembling-machine", "furnace", "mining-drill", "lab" }, force = force,
+    position = at, radius = 100 })) do
+    local st = f.status
+    if st == S.low_power then low = low + 1
+    elseif st == S.no_power and not crew_built(f) then dark = dark + 1
+    elseif (st == S.item_ingredient_shortage or st == S.no_ingredients) and f.type == "assembling-machine" then
+      local r = f.get_recipe()
+      local miss = r and missing_input(f)
+      if miss then
+        local g = starved[r.name] or { n = 0, miss = miss }
+        g.n = g.n + 1
+        starved[r.name] = g
+      end
+    elseif (st == S.full_output or st == S.waiting_for_space_in_destination) and (f.type == "furnace" or f.type == "mining-drill") then
+      local r = f.type == "furnace" and f.get_recipe()
+      local what = r and r.name or f.mining_target and f.mining_target.name or f.name
+      backed[what] = (backed[what] or 0) + 1
+    end
+  end
+  if low >= 3 then h[#h + 1] = { key = "power", kind = "hint_power", vars = { n = low }, text = low .. " machines are on low power" } end
+  for name, g in pairs(starved) do
+    if g.n >= 3 then
+      h[#h + 1] = { key = "starved:" .. name, kind = "hint_starved", vars = { n = g.n, item = pretty(name), other = pretty(g.miss) },
+        text = g.n .. " machines making " .. pretty(name) .. " are starved of " .. pretty(g.miss) }
+    end
+  end
+  if dark >= 3 then h[#h + 1] = { key = "dark", kind = "hint_dark", vars = { n = dark }, text = dark .. " machines near the player have no power" } end
+  for name, n in pairs(backed) do
+    if n >= 4 then
+      h[#h + 1] = { key = "backed:" .. name, kind = "hint_backed", vars = { n = n, item = pretty(name) },
+        text = n .. " " .. pretty(name) .. " machines are backed up, nothing takes their output" }
+    end
+  end
+  -- made far beyond what's used
+  local stats = force.get_item_production_statistics(surface)
+  for name in pairs(stats.input_counts) do
+    local function flow(cat)
+      return stats.get_flow_count({ name = name, category = cat, precision_index = defines.flow_precision_index.ten_minutes, count = true })
+    end
+    local made = flow("input")
+    if made >= 2000 and flow("output") < made * 0.1 then
+      h[#h + 1] = { key = "over:" .. name, kind = "hint_over", vars = { n = math.floor(made), item = pretty(name) },
+        text = math.floor(made) .. " " .. pretty(name) .. " made in 10 minutes and almost none used" }
+    end
+  end
+  -- nothing done for 5 minutes
+  storage.progress_at = storage.progress_at or {}
+  local k = owner or 0
+  storage.progress_at[k] = storage.progress_at[k] or game.tick
+  if game.tick - storage.progress_at[k] >= 18000 then
+    local tech = not force.current_research and #force.research_queue == 0 and cheapest_tech(force)
+    if tech then
+      h[#h + 1] = { key = "research:" .. tech.name, kind = "hint_research", vars = { item = pretty(tech.name) },
+        text = "nothing is being researched; " .. pretty(tech.name) .. " is the cheapest next technology" }
+    else
+      h[#h + 1] = { key = "stall", kind = "hint_stall", text = "the player has built and researched nothing for 5 minutes", stall = true }
+    end
+  end
+  return h
+end
+
+-- one hint now, if there's one not given lately; its key
+local function hint(owner, now)
+  local members = members_of(owner)
+  if #members == 0 then return end
+  local k = owner or 0
+  storage.hint_at, storage.hinted = storage.hint_at or {}, storage.hinted or {}
+  storage.hinted[k] = storage.hinted[k] or {}
+  if not now and game.tick - (storage.hint_at[k] or -18000) < 18000 then return end
+  local player = owner and game.get_player(owner)
+  local c = player and player.character
+  local m = members[1]
+  if c then table.sort(members, function(a, b) return dist2(a.entity.position, c.position) < dist2(b.entity.position, c.position) end) m = members[1] end
+  for _, h in ipairs(find_hint(owner, c and c.surface or m.entity.surface, m.entity.force, c and c.position or m.home)) do
+    if game.tick - (storage.hinted[k][h.key] or -108000) >= 108000 then
+      storage.hinted[k][h.key], storage.hint_at[k] = game.tick, game.tick
+      if h.stall then
+        storage.progress_at[k] = game.tick -- (asked once; not again until another 5 minutes pass)
+        storage.proposals = storage.proposals or {}
+        propose(owner)
+        if storage.proposals[k] then return h.key end
+      end
+      remember(owner, m.name .. " pointed out: " .. h.text)
+      local llm = llm_settings(player)
+      if player and py() and llm.provider ~= "off" then
+        chatter(player, { kind = h.kind, vars = h.vars, who = nil,
+          text = "a hint for the player: " .. h.text .. ". One of them (" .. m.name .. " ideally) tells the player in one short, " ..
+            "helpful line, with a concrete suggestion" })
+      else
+        say(m, line(m, h.kind, h.vars))
+      end
+      return h.key
+    end
+  end
+end
+
+local function progress(owner) storage.progress_at = storage.progress_at or {} storage.progress_at[owner or 0] = game.tick end
+
+-- something worth a word happened: remembered, and someone reacts (at most once a minute per player)
+react = function(owner, kind, text, vars, who)
+  remember(owner, text)
+  local player = owner and game.get_player(owner)
+  if not (player and player.connected) then return end
+  storage.react_at = storage.react_at or {}
+  if game.tick < (storage.react_at[owner] or 0) then return end
+  storage.react_at[owner] = game.tick + 3600
+  chatter(player, { kind = kind, text = text, vars = vars, who = who })
 end
 
 local function on_answer(p, out)
@@ -2041,9 +3251,8 @@ local function on_answer(p, out)
     return speak(text, "ada")
   end
   if p.kind == "check" then
-    storage.ai = storage.ai or {}
     if not (a.provider or a.error) then a.error = "no answer" end
-    storage.ai[p.owner] = a
+    ai_state[p.owner] = a
     return
   end
   if p.kind == "banter" then
@@ -2057,7 +3266,7 @@ local function on_answer(p, out)
         at = at + 300
       end
     end
-    if at == game.tick then canned(p.owner, members) end
+    if at == game.tick then canned(p.owner, members, p.ev) end
     return
   end
   local fallback = find_member(p.to[1], p.owner)
@@ -2067,7 +3276,7 @@ local function on_answer(p, out)
   end
   for _, r in pairs(a.replies or {}) do
     local m = find_member(r.who, p.owner) or fallback
-    if m and type(r.text) == "string" and r.text ~= "" then say(m, r.text:sub(1, 300)) end
+    if m and type(r.text) == "string" and r.text ~= "" then say(m, r.text:sub(1, 300), "talk") end
   end
   for _, j in pairs(a.jobs or {}) do
     local m = find_member(j.who, p.owner) or fallback
@@ -2085,7 +3294,6 @@ local fstd = script.active_mods["fnative-std"] and require("__fnative-std__/wind
 local WIN = "aic_window"
 local PROVIDER_CHOICES, TOGGLES
 local ADA_VOICES = { "ava", "jenny", "aria", "emma", "michelle" }
-local DOING = DOING_WORD
 
 local function goal_text(owner)
   local nd = needs(owner)[1]
@@ -2105,8 +3313,8 @@ local function status_text(m)
   if m.retreat then return "falling back, hurt" end
   if m.target and m.target.valid then return "fighting " .. pretty(m.target.name) end
   local j = m.jobs[1]
-  if not j then return m.follow and "following you" or "waiting here" end
-  local s = DOING[j.kind] or j.kind
+  if not j then return m.roam and "roaming" or m.follow and "following you" or "waiting here" end
+  local s = DOING_WORD[j.kind] or j.kind
   if j.kind == "mine" then s = s .. " " .. pretty(j.item) .. " " .. (j.n or 0) .. "/" .. j.count
   elseif j.kind == "craft" or j.kind == "fetch" then s = s .. " " .. j.count .. " " .. pretty(j.recipe or j.item)
   elseif j.kind == "smelt" or j.kind == "feed" or j.kind == "place" then s = s .. " " .. pretty(j.item or j.recipe or "")
@@ -2123,7 +3331,7 @@ end
 
 -- the AI tab's lines: loader, provider and key, the last test, voices
 local function ai_lines(player)
-  local a = storage.ai and storage.ai[player.index]
+  local a = ai_state[player.index]
   local llm = llm_settings(player)
   local out = {}
   if not py() then
@@ -2148,10 +3356,12 @@ TOGGLES = {
   { "ada", "ADA announces milestones", "Research done, first science, rocket launches, deaths" },
   { "ada-llm", "ADA words her lines with the AI", "One AI request per announcement" },
   { "chatter", "Crew chatter while you're away", "After 2 minutes without input, every minute or so" },
+  { "hints", "Crew give hints", "Research to start, starved or backed-up machines, power, oversupply, what to do next when nothing's happened for 5 minutes" },
+  { "jetpack", "Crew jetpacks", "They fly over what's in their way (and to a fight); off: they step through it a few tiles at a time" },
 }
 
 local function ai_short(player)
-  local a = storage.ai and storage.ai[player.index]
+  local a = ai_state[player.index]
   if not py() then return "[color=0.7,0.7,0.7]AI chat off (no fnative loader)[/color]" end
   if not a then return "[color=0.7,0.7,0.7]AI chat not tested (Settings tab)[/color]" end
   return a.ok and ("[color=0.4,1,0.4]AI chat: " .. tostring(a.provider) .. "[/color]") or "[color=1,0.4,0.4]AI chat not working (Settings tab)[/color]"
@@ -2162,16 +3372,15 @@ local function check_ai(player)
   local id = native.start("py", "aicrew:check", helpers.table_to_json({ llm = llm_settings(player) }))
   if id then
     pending[id] = { kind = "check", owner = player.index }
-    storage.ai = storage.ai or {}
-    storage.ai[player.index] = storage.ai[player.index] or {}
-    storage.ai[player.index].testing = true
+    ai_state[player.index] = ai_state[player.index] or {}
+    ai_state[player.index].testing = true
   end
 end
 
 local function add_button(player)
   local flow = mod_gui.get_button_flow(player)
   if not flow.aic_toggle then
-    flow.add({ type = "sprite-button", name = "aic_toggle", sprite = "entity/character", style = mod_gui.button_style,
+    flow.add({ type = "sprite-button", name = "aic_toggle", sprite = "entity/" .. CREW, style = mod_gui.button_style,
       tooltip = "AI Crew" })
   end
 end
@@ -2272,7 +3481,8 @@ local function build_panel(player)
       tooltip = "Arms itself (best armor and gun from your stock, or makes them), shoots enemies in range, falls back to you when hurt" })
     t.add({ type = "checkbox", caption = "Auto", state = m.auto ~= false, tags = { aic = "auto", who = m.name },
       tooltip = "Clears deconstruction marks and builds ghosts near you on its own, making what's missing" })
-    if m.follow then btn(t, "Stay", "stay", m.name, "Hold position", 64) else btn(t, "Follow", "follow", m.name, "Follow you", 64) end
+    btn(t, m.roam and "Roam" or m.follow and "Follow" or "Stay", "mode", m.name,
+      "Follow: stays with you. Roam: wanders round you on its own, dealing with what it finds. Stay: holds here. Click to switch.", 64)
     btn(t, "Stop", "stop", m.name, "Drop all its jobs", 56)
     btn(t, "Fire", "fire", m.name, "Dismiss (it hands over what it carries)", 52)
   end
@@ -2288,7 +3498,10 @@ local function build_panel(player)
     btn(r, "Clear", "deconstruct", nil, "Remove what's marked for deconstruction near you", 64)
     btn(r, "Upgrade", "upgrade", nil, "Carry out the upgrade planner's marks near you (making the new pieces); recipes and contents kept", 76)
     btn(r, "Deliver", "deliver", nil, "Bring you everything they carry", 72)
+    r = row(crew_tab)
+    r.add({ type = "label", caption = "Everyone:" }).style.font_color = { 0, 0, 0, 0 } -- (lines up with the row above)
     btn(r, "Come", "follow", nil, "Follow you", 64)
+    btn(r, "Roam", "roam", nil, "Wander round you on their own, dealing with what they find", 64)
     btn(r, "Stop", "stop", nil, "Drop all jobs", 56)
     btn(r, "Clear nests", "attack", nil, "Destroy the enemy spawners and worms within 96 tiles of you", 100)
   end
@@ -2366,7 +3579,7 @@ local function build_panel(player)
   end
   tabs.selected_tab_index = math.min(st.tab or 1, 4)
 
-  if py() and not (storage.ai and storage.ai[player.index]) then check_ai(player) end
+  if py() and not ai_state[player.index] then check_ai(player) end
 end
 
 local function open_frame(player) return player.gui.screen[WIN] end
@@ -2429,6 +3642,9 @@ local function act(player, action, who)
     order(player.index, "crew hire " .. (name and name.text:match("^%s*(%S+)") or ""))
   elseif action == "fire" then
     order(player.index, "crew fire " .. who)
+  elseif action == "mode" then -- follow, roam, stay, follow...
+    local m = find_member(who, player.index)
+    if m then order(player.index, m.name .. " " .. (m.roam and "stay" or m.follow and "roam" or "follow")) end
   elseif action == "get" or action == "mine" or action == "craft" then
     if not st.item then return player.print("Pick an item first.") end
     order(player.index, who_of(f) .. " " .. action .. " " .. (tonumber(st.count) or 50) .. " " .. st.item)
@@ -2453,6 +3669,152 @@ local function act(player, action, who)
   end
   if open_frame(player) then build_panel(player) end
 end
+
+
+-- ------------------------------------------------------------------------------------------------------ hover card
+-- Hovering a crew member: a card under the minimap (where the game shows what's under the cursor), like the game's
+-- own: name and manner, what they're doing, health, how they go about (follow, roam, stay; fight, auto), armor, gun and
+-- ammo, fish, what's in their pockets, and their record (kills, built, trips, deaths). Updated twice a second while
+-- hovered; gone when the cursor leaves them. (In a block of its own: the main chunk is at Lua's 200-locals limit.)
+local hover = { CARD = "aic_card" }
+
+function hover.member_of(ent)
+  if not (ent and ent.valid and ent.name == CREW) then return end
+  for _, m in pairs(crew()) do if m.entity == ent then return m end end
+end
+
+function hover.slot(parent, item, count, tip)
+  local b = parent.add({ type = "sprite-button", style = "slot_button", sprite = item and ("item/" .. item) or nil,
+    number = count and count > 1 and count or nil, tooltip = tip or (item and prototypes.item[item].localised_name or "") })
+  b.style.size = 32
+  b.ignored_by_interaction = false
+  return b
+end
+
+function hover.card(player, m)
+  local old = player.gui.screen[hover.CARD]
+  if old then old.destroy() end
+  if not (m and m.entity.valid) then return end
+  local e = m.entity
+  local c = m.color
+  local f = player.gui.screen.add({ type = "frame", name = hover.CARD, direction = "vertical", tags = { who = m.name },
+    caption = string.format("[color=%g,%g,%g]%s[/color]  [font=default-small][color=0.7,0.7,0.7]%s crew member[/color][/font]",
+      c[1], c[2], c[3], m.name, trait(m)) })
+  f.ignored_by_interaction = true
+  f.style.width = 300
+  local box = f.add({ type = "frame", style = "inside_shallow_frame_with_padding", direction = "vertical" })
+  box.style.horizontally_stretchable = true
+  local inner = box.add({ type = "flow", direction = "vertical" })
+  inner.style.vertical_spacing = 4
+  inner.add({ type = "label", caption = "[font=default-semibold]" .. status_text(m) .. "[/font]" }).style.single_line = false
+  local hp = inner.add({ type = "flow", direction = "horizontal" })
+  hp.style.vertical_align = "center"
+  local bar = hp.add({ type = "progressbar", value = e.health / e.max_health })
+  bar.style.horizontally_stretchable = true
+  bar.style.color = e.health / e.max_health > 0.5 and { 0.3, 0.85, 0.3 } or { 0.9, 0.3, 0.2 }
+  hp.add({ type = "label", caption = string.format("%d / %d", e.health, e.max_health) })
+  -- (how it goes about it; the mode only when it's busy: idle, the line above says it already)
+  local mode = not m.jobs[1] and "" or ((m.roam and "Roaming" or m.follow and "Following you" or "Staying put") .. " · ")
+  inner.add({ type = "label", caption = string.format("[color=0.75,0.75,0.75]%sFight %s · Auto %s%s[/color]", mode,
+    m.defend ~= false and "on" or "off", m.auto ~= false and "on" or "off", m.retreat and " · [color=1,0.4,0.3]falling back[/color]" or "") })
+  -- what they carry into a fight
+  local gear = inner.add({ type = "flow", direction = "horizontal" })
+  gear.style.vertical_align = "center"
+  local function first(inv_id)
+    local inv = e.get_inventory(inv_id)
+    if not inv then return end
+    for i = 1, #inv do if inv[i].valid_for_read then return inv[i].name, inv[i].count end end
+  end
+  local armor = first(defines.inventory.character_armor)
+  local gun = first(defines.inventory.character_guns)
+  local ammo, rounds = first(defines.inventory.character_ammo)
+  hover.slot(gear, armor, nil, armor and nil or "No armor")
+  hover.slot(gear, gun, nil, gun and nil or "No gun")
+  hover.slot(gear, ammo, rounds, ammo and nil or "No ammo")
+  local fish = e.get_main_inventory().get_item_count("raw-fish")
+  hover.slot(gear, prototypes.item["raw-fish"] and "raw-fish" or nil, fish, fish .. " fish to heal with")
+  local range = gun and gun_range(m) or 0
+  gear.add({ type = "label", caption = gun and string.format("  range %d", range) or "  unarmed" })
+  -- pockets
+  local items = e.get_main_inventory().get_contents()
+  table.sort(items, function(a, b) return a.count > b.count end)
+  if #items > 0 then
+    local t = inner.add({ type = "table", column_count = 8 })
+    t.style.horizontal_spacing, t.style.vertical_spacing = 0, 0
+    for i = 1, math.min(#items, 16) do hover.slot(t, items[i].name, items[i].count) end
+  else
+    inner.add({ type = "label", caption = "[color=0.6,0.6,0.6]Pockets empty[/color]" })
+  end
+  local queued = #m.jobs > 1 and string.format(" · %d jobs queued", #m.jobs - 1) or ""
+  inner.add({ type = "label", caption = string.format("[color=0.75,0.75,0.75]Kills %d · Built %d · Trips %d · Flights %d · Down %d%s[/color]",
+    m.kills or 0, m.built or 0, m.rides or 0, m.flights or 0, m.deaths or 0, queued) })
+  -- under the minimap, right side (where the game's own info for what's under the cursor goes)
+  local res, scale = player.display_resolution, player.display_scale
+  f.location = { x = res.width - (300 + 12) * scale, y = math.floor(380 * scale) }
+end
+
+-- With the fnative loader's "entityinfo" plugin the same goes into the game's own info panel as rows, and no card
+function hover.native_panel()
+  if hover.native == nil then
+    local ok, r = pcall(function() return native and native.call("entityinfo", "status", "") end)
+    hover.native = ok and type(r) == "string" and r:find('"hooked":%[%s*"') ~= nil
+  end
+  return hover.native
+end
+
+function hover.rows(m)
+  local e = m.entity
+  local function first(inv_id)
+    local inv = e.get_inventory(inv_id)
+    for i = 1, inv and #inv or 0 do if inv[i].valid_for_read then return inv[i].name, inv[i].count end end
+  end
+  local armor = first(defines.inventory.character_armor)
+  local gun = first(defines.inventory.character_guns)
+  local ammo, rounds = first(defines.inventory.character_ammo)
+  local carry = {}
+  local items = e.get_main_inventory().get_contents()
+  table.sort(items, function(a, b) return a.count > b.count end)
+  for i = 1, math.min(#items, 8) do carry[#carry + 1] = "[item=" .. items[i].name .. "]" .. items[i].count end
+  local c = m.color
+  local how = string.format("fight %s · auto %s", m.defend ~= false and "on" or "off", m.auto ~= false and "on" or "off")
+  if m.jobs[1] then how = (m.roam and "roaming" or m.follow and "following you" or "staying put") .. " · " .. how end
+  return {
+    { "Name", string.format("[color=%g,%g,%g]%s[/color] (%s)", c[1], c[2], c[3], m.name, trait(m)) },
+    { "Doing", status_text(m) .. (m.retreat and " [color=1,0.4,0.3](falling back)[/color]" or "") },
+    { "Settings", how },
+    { "Weapon", gun and string.format("[item=%s] range %d  %s", gun, gun_range(m), ammo and string.format("[item=%s]%d", ammo, rounds)
+      or "no ammo") or "unarmed" },
+    { "Armor", armor and ("[item=" .. armor .. "]") or "none" },
+    { "Fish", "[item=raw-fish]" .. e.get_main_inventory().get_item_count("raw-fish") },
+    { "Carrying", #carry > 0 and table.concat(carry, " ") or "nothing" },
+    { "Record", string.format("%d kills · %d built · %d trips · %d down", m.kills or 0, m.built or 0, (m.rides or 0) + (m.flights or 0),
+      m.deaths or 0) },
+  }
+end
+
+hover.shown = {} -- player index -> unit number in the native panel (not saved)
+function hover.show(player, m)
+  if hover.native_panel() then
+    if player.gui.screen[hover.CARD] then player.gui.screen[hover.CARD].destroy() end
+    local was = hover.shown[player.index]
+    if was and not (m and m.entity.unit_number == was) then
+      native.call("entityinfo", "clear", helpers.table_to_json({ unit = was }))
+      hover.shown[player.index] = nil
+    end
+    if m and m.entity.valid then
+      native.call("entityinfo", "set", helpers.table_to_json({ name = CREW, unit = m.entity.unit_number, rows = hover.rows(m) }))
+      hover.shown[player.index] = m.entity.unit_number
+    end
+    return
+  end
+  hover.card(player, m)
+end
+
+script.on_event(defines.events.on_selected_entity_changed, function(ev)
+  local player = game.get_player(ev.player_index)
+  if player then hover.show(player, hover.member_of(player.selected)) end
+end)
+
 
 script.on_event(defines.events.on_gui_click, function(ev)
   local el, player = ev.element, game.get_player(ev.player_index)
@@ -2572,16 +3934,41 @@ local function init()
   end
 end
 script.on_init(init)
+
+-- you put something down where a crew member stands (their body would block it): they step aside first
+script.on_event(defines.events.on_pre_build, function(ev)
+  local player = game.get_player(ev.player_index)
+  if not player then return end
+  for _, m in pairs(crew()) do
+    local e = m.entity
+    if e.valid and e.surface == player.surface and dist2(e.position, ev.position) < 9 then
+      local to = e.surface.find_non_colliding_position(CREW, { x = e.position.x + (e.position.x >= ev.position.x and 3 or -3),
+        y = e.position.y }, 6, 0.5)
+      if to and dist2(to, ev.position) >= 6 then e.teleport(to) end
+    end
+  end
+end)
 script.on_configuration_changed(function() source_names, machine_cache = {}, {} init() end)
 
 script.on_event(defines.events.on_tick, function(ev)
   local t = ev.tick
+  if not ai_checked and t % 60 == 0 then -- (once a session, a second in: the AI tested for whoever is playing)
+    ai_checked = true
+    if storage.ai then storage.ai = nil end -- (before 0.8.0 the last test was saved, and shown stale on load)
+    for _, p in pairs(game.connected_players) do if py() and llm_settings(p).provider ~= "off" then check_ai(p) end end
+  end
   for name, m in pairs(crew()) do
     local e = m.entity
     if not (e and e.valid) then
       crew()[name] = nil
     else
-      if m.move then walk(m) end
+      if m.drop_at then
+        if not e.vehicle then e.teleport(m.drop_at) end
+        m.drop_at = nil
+      end
+      if m.ride then riding(m) end
+      if m.ride and e.vehicle then -- (driving or riding: nothing else moves them)
+      elseif m.fly then flight(m) elseif m.move then walk(m) end
       if m.mining then
         e.update_selected_entity(m.mining)
         e.mining_state = { mining = true, position = m.mining }
@@ -2594,8 +3981,9 @@ script.on_event(defines.events.on_tick, function(ev)
           e.shooting_state = { state = defines.shooting.not_shooting, position = e.position }
         end
       end
-      if (t + m.phase) % (m.jobs[1] and m.jobs[1].kind == "attack" and 15 or 30) == 0 then fight(m) end
-      if (t + m.phase) % 10 == 0 and (not m.move or (m.jobs[1] and m.jobs[1].kind == "attack" and (t + m.phase) % 60 == 0)) and not m.retreat then think(m) end
+      local war = m.jobs[1] and (m.jobs[1].kind == "attack" or m.jobs[1].kind == "defend")
+      if (t + m.phase) % (war and 15 or 30) == 0 then fight(m) end
+      if (t + m.phase) % 10 == 0 and not m.fly and (not m.move or (war and (t + m.phase) % 60 == 0)) and not m.retreat then think(m) end
       if m.retreat and not m.move and (t + m.phase) % 60 == 0 then go(m, anchor(m), 4) end
     end
   end
@@ -2611,13 +3999,45 @@ script.on_event(defines.events.on_tick, function(ev)
     end
   end
   if t % 30 == 0 then
-    for _, p in pairs(game.connected_players) do refresh(p) end
+    for _, p in pairs(game.connected_players) do
+      refresh(p)
+      if p.gui.screen.aic_card or hover.shown[p.index] then hover.show(p, hover.member_of(p.selected)) end -- (kept current)
+    end
     for i = #lines, 1, -1 do
       local l = lines[i]
       if t >= l.at then
         table.remove(lines, i)
         local m = find_member(l.who, l.owner)
-        if m then say(m, l.text) end
+        if m then say(m, l.text, "talk") end
+      end
+    end
+  end
+  if t % 60 == 0 then -- back at the keyboard after a while away: someone says hello
+    storage.away = storage.away or {}
+    for _, p in pairs(game.connected_players) do
+      if p.afk_time > 7200 then storage.away[p.index] = true
+      elseif storage.away[p.index] and p.afk_time < 120 then
+        storage.away[p.index] = nil
+        local members = members_of(p.index)
+        if #members > 0 then
+          local m = pick(members)
+          say(m, line(m, "welcome"), "talk")
+        end
+      end
+    end
+  end
+  if t % 600 == 300 then -- hints, for players at the keyboard who want them
+    for _, p in pairs(game.connected_players) do
+      if p.afk_time < 3600 and player_setting(p, "ai-crew-hints") ~= false then hint(p.index) end
+    end
+  end
+  if t % 600 == 0 then -- offers: a new one every 10 minutes you're at the keyboard, an old one lapsing after 5
+    storage.propose_at = storage.propose_at or {}
+    for k, o in pairs(storage.proposals or {}) do if t - o.at > 18000 then storage.proposals[k] = nil end end
+    for _, p in pairs(game.connected_players) do
+      if p.afk_time < 3600 and t >= (storage.propose_at[p.index] or 36000) then
+        storage.propose_at[p.index] = t + 36000
+        propose(p.index)
       end
     end
   end
@@ -2641,7 +4061,9 @@ script.on_event(defines.events.on_tick, function(ev)
         local m = hire(name, game.get_surface(f.surface), f.home, f.force, f.owner)
         if m then
           m.auto, m.defend, m.follow = f.auto, f.defend, f.follow
-          say(m, pick({ "I'm back. What did I miss?", "Reconstructed and ready.", "Round two." }))
+          m.roam = f.roam
+          for k, v in pairs(f.stats or {}) do m[k] = v end
+          say(m, line(m, "back"))
         end
       end
     end
@@ -2664,20 +4086,58 @@ path_finished = function(ev)
   if not name then return end
   storage.paths[ev.id] = nil
   local m = crew()[name]
+  if m and m.ride and m.ride.path_id == ev.id then -- (a route for the car)
+    if ev.path then m.ride.path, m.ride.i = ev.path, 1
+    elseif ev.try_again_later then m.ride.repath = true
+    else m.ride.failed = true end
+    return
+  end
   if not (m and m.move) then return end
   if ev.path then
-    m.move.path, m.move.i = ev.path, 1
+    m.move.path, m.move.i, m.move.straight, m.move.closest, m.move.closest_at = ev.path, 1, nil, nil, nil
+    -- a long way round something they could fly over: fly
+    local len, prev = 0, m.entity.position
+    for _, wp in ipairs(ev.path) do len, prev = len + math.sqrt(dist2(prev, wp.position)), wp.position end
+    local straight = math.sqrt(dist2(m.entity.position, m.move.goal))
+    if straight <= JET and len > straight * 2.5 + 8 then fly(m, m.move.goal) end
   elseif ev.try_again_later then
     m.move.retry = ev.tick + 30
   else
-    m.move.path, m.move.i = { { position = m.move.goal } }, 1 -- no path: straight at it, the stuck check hops it
+    -- no path: fly over, else straight at it, and walk()'s step-through covers whatever that runs into
+    m.move.path, m.move.i, m.move.straight = { { position = m.move.goal } }, 1, true
+    fly(m, m.move.goal)
   end
 end
 script.on_event(defines.events.on_script_path_request_finished, path_finished)
 
+-- your buildings hit by an enemy: the crew nearby come to defend them (once every 2 s per place)
+script.on_event(defines.events.on_entity_damaged, function(ev)
+  local ent, by = ev.entity, ev.force
+  if not (by and ent.valid and ent.force.is_enemy(by)) then return end
+  storage.attacks = storage.attacks or {}
+  local k = ent.surface.index
+  local a = storage.attacks[k]
+  if a and game.tick - a.tick < 120 and dist2(a.pos, ent.position) < 32 * 32 then return end
+  storage.attacks[k] = { pos = ent.position, tick = game.tick }
+  alarm(ent.surface, ent.force, ent)
+end, (function()
+  local f = {}
+  for _, t in ipairs({ "unit", "unit-spawner", "turret", "character", "tree", "simple-entity", "fish" }) do
+    f[#f + 1] = { filter = "type", type = t, invert = true, mode = "and" }
+  end
+  return f
+end)())
+
+-- what counts as progress (no "nothing done" hint while there's some): building, crafting, research
+script.on_event({ defines.events.on_built_entity, defines.events.on_player_crafted_item }, function(ev) progress(ev.player_index) end)
+
 script.on_event(defines.events.on_research_finished, function(ev)
+  for _, p in pairs(ev.research.force.players) do progress(p.index) end
   if ev.by_script then return end
   ada("Research complete: " .. pretty(ev.research.name) .. ".")
+  for _, p in pairs(ev.research.force.connected_players) do
+    react(p.index, "research", "research done: " .. pretty(ev.research.name), { item = pretty(ev.research.name) })
+  end
   storage.queue_check = ev.tick + 60
 end)
 
@@ -2690,16 +4150,26 @@ script.on_event(defines.events.on_player_died, function()
 end)
 
 script.on_event(defines.events.on_entity_died, function(ev)
+  local cause = ev.cause
+  if cause and cause.valid and cause.name == CREW and ev.entity.type ~= "character" then -- (an enemy one of them killed)
+    for _, m in pairs(crew()) do if m.entity == cause then m.kills = (m.kills or 0) + 1 end end
+    return
+  end
+  if ev.entity.type ~= "character" then return end
   for name, m in pairs(crew()) do
     if m.entity == ev.entity then
       crew()[name] = nil
       storage.fallen = storage.fallen or {}
       storage.fallen[name] = { at = ev.tick + 3600, owner = m.owner, home = m.home, surface = m.entity.surface.name,
-        force = m.entity.force.name, auto = m.auto, defend = m.defend, follow = m.follow }
+        force = m.entity.force.name, auto = m.auto, defend = m.defend, follow = m.follow, roam = m.roam,
+        stats = { kills = m.kills, built = m.built, deaths = (m.deaths or 0) + 1, rides = m.rides, flights = m.flights } }
       ada("Crew member " .. name .. " is down. Reconstruction in sixty seconds.")
+      react(m.owner, "down", name .. " was killed" .. (ev.cause and ev.cause.valid and (" by a " .. pretty(ev.cause.name)) or ""),
+        { other = name }, name)
     end
   end
-end, { { filter = "type", type = "character" } })
+end, { { filter = "type", type = "character" }, { filter = "type", type = "unit" }, { filter = "type", type = "unit-spawner" },
+  { filter = "type", type = "turret" } })
 
 remote.add_interface("ai-crew", {
   hire = function(name, surface, position, force, owner)
@@ -2708,11 +4178,21 @@ remote.add_interface("ai-crew", {
     return m.name
   end,
   order = function(owner, text) order(owner, text) end,
+  -- (tests) a line typed in normal chat
+  hear = function(owner, text) hear(owner, text) end,
   -- (tests) path answers held back n ticks, as a busy pathfinder would
   test_path_delay = function(n) storage.path_delay = n end,
   -- (tests) a button of the window pressed
   press = function(player_index, action) act(game.get_player(player_index), action) end,
-  ai_status = function(player_index) return storage.ai and storage.ai[player_index] end,
+  ai_status = function(player_index) return ai_state[player_index] end,
+  -- what the crew remember lately (the AI gets it): {tick, text}, oldest first
+  memory = function(owner) return storage.events and storage.events[owner or 0] end,
+  notes = function(owner) return storage.notes and storage.notes[owner or 0] end,
+  -- (tests) an offer made now; the goal
+  propose = function(owner) propose(owner) return storage.proposals and storage.proposals[owner or 0] end,
+  goal = function(owner) return storage.goals and storage.goals[owner or 0] end,
+  -- (tests) a hint now (the 5-minute gap skipped); its key
+  hint = function(owner) return hint(owner, true) end,
   -- (tests) the window opened on a tab
   panel = function(player_index, tab)
     local player = game.get_player(player_index)
@@ -2740,7 +4220,7 @@ remote.add_interface("ai-crew", {
     local inv = {}
     for _, it in pairs(m.entity.get_main_inventory().get_contents()) do inv[it.name] = (inv[it.name] or 0) + it.count end
     local j = m.jobs[1]
-    return { position = m.entity.position, jobs = #m.jobs, health = m.entity.health, retreat = m.retreat, armed = gun_range(m) > 0,
+    return { lines = m.lines or 0, last_lines = m.last_lines, rides = m.rides or 0, riding = m.ride and m.entity.vehicle and m.entity.vehicle.name or nil, flights = m.flights or 0, flying = m.fly ~= nil, mode = m.roam and "roam" or m.follow and "follow" or "stay", position = m.entity.position, jobs = #m.jobs, health = m.entity.health, retreat = m.retreat, armed = gun_range(m) > 0,
       fighting = m.target and m.target.valid and m.target.name or nil, unit = m.entity.unit_number, doing = j and (j.kind .. ((j.item or j.recipe) and (" " .. (j.item or j.recipe) .. " " .. (j.n or 0) .. "/" .. (j.count or "")) or "")),
       inventory = inv, fed = m.fed, collected = m.collected, need = storage.needs and storage.needs[m.owner or 0] and storage.needs[m.owner or 0][1] and storage.needs[m.owner or 0][1].item }
   end,

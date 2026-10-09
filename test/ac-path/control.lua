@@ -6,7 +6,7 @@ local NAMES = { "Rook", "Mara", "Juno" }
 
 local function body(name)
   local st = remote.call("ai-crew", "status", name)
-  return st and game.surfaces.nauvis.find_entities_filtered({ name = "character", position = st.position, radius = 0.3 })[1]
+  return st and game.surfaces.nauvis.find_entities_filtered({ type = "character", position = st.position, radius = 0.3 })[1]
 end
 
 script.on_nth_tick(5, function(ev)

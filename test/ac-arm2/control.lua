@@ -7,7 +7,7 @@ local G, A = defines.inventory.character_guns, defines.inventory.character_ammo
 
 local function body(name)
   local st = remote.call("ai-crew", "status", name)
-  return st and game.surfaces.nauvis.find_entities_filtered({ name = "character", position = st.position, radius = 0.3 })[1]
+  return st and game.surfaces.nauvis.find_entities_filtered({ type = "character", position = st.position, radius = 0.3 })[1]
 end
 
 script.on_nth_tick(5, function(ev)
@@ -24,6 +24,7 @@ script.on_nth_tick(5, function(ev)
   chest.insert({ name = "iron-plate", count = 200 })
   chest.insert({ name = "copper-plate", count = 50 })
   chest.insert({ name = "firearm-magazine", count = 310 })
+  chest.insert({ name = "raw-fish", count = 20 }) -- (no fishing trips: the map round the test area is random)
   remote.call("ai-crew", "hire", "Rook", "nauvis", { x = 3, y = 2 })
   remote.call("ai-crew", "hire", "Mara", "nauvis", { x = -3, y = 2 })
   remote.call("ai-crew", "hire", "Juno", "nauvis", { x = 0, y = 5 })

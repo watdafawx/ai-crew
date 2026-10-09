@@ -44,7 +44,7 @@ script.on_nth_tick(600, function(ev)
   elseif storage.phase == "attack" and (nests == 0 or ev.tick >= 30000) then
     storage.cleared = nests == 0
     storage.first_unit = st and st.unit
-    local rook = st and s.find_entities_filtered({ name = "character", position = st.position, radius = 1 })[1]
+    local rook = st and s.find_entities_filtered({ type = "character", position = st.position, radius = 1 })[1]
     if rook then rook.die("enemy") end
     storage.died_at, storage.phase = ev.tick, "respawn"
   elseif storage.phase == "respawn" and ev.tick >= storage.died_at + 4200 then
