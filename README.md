@@ -213,6 +213,7 @@ python test/run.py ac-power 144010 headless game: an engine goal with no assembl
 python test/run.py ac-boot         headless game: from nothing, a furnace, plates, a ghost, gears, an engine
 python test/run.py ac-goal         headless game: a 10 gear goal from ore, coal and an empty furnace
 python test/run.py                 headless game: auto clear and build (crafting a missing item), mine round a wall, craft, deliver
+python test/run.py --all [-j N]    every headless case above, N games at once (default 4, below normal priority)
 python test/run_gui.py             real client (FSE launcher): every tab screenshotted, Settings saved and tested, the hover card
 python test/run_gui.py ac-info     real client: the crew's rows in the game's own info panel (the game window grabbed)
 python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)

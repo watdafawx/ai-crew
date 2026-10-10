@@ -1745,12 +1745,22 @@ local function have_count(m, item)
 end
 
 -- is anything generating in this electric network (looked for within 200 tiles)
-local function net_has_power(surface, force, id, near)
+--- is the pole's network fed by a generator? Its statistics know any generator that has fed it, however far off (a
+--- big base's power plant can be hundreds of tiles away); else (nothing drawing from it yet) a look round the pole.
+--- `seen`: networks already known to be fed
+local function net_has_power(pole, seen)
+  local id = pole.electric_network_id
   if not id then return false end
-  for _, g in pairs(surface.find_entities_filtered({ type = GENERATORS, force = force, position = near, radius = 200 })) do
-    if g.electric_network_id == id then return true end
+  if seen[id] then return true end
+  if next(pole.electric_network_statistics.output_counts) == nil then
+    local found = false
+    for _, g in pairs(pole.surface.find_entities_filtered({ type = GENERATORS, force = pole.force, position = pole.position, radius = 200 })) do
+      if g.electric_network_id == id then found = true break end
+    end
+    if not found then return false end
   end
-  return false
+  seen[id] = true
+  return true
 end
 
 -- where water meets land nearest the owner: an offshore pump, a boiler on its output and a steam engine on the boiler's
@@ -1856,9 +1866,10 @@ end
 local function power_to(m, machine, depth)
   local e = m.entity
   local s, force = e.surface, e.force
-  local from, fd
+  local from, fd, seen = nil, nil, {}
   for _, p in pairs(s.find_entities_filtered({ type = "electric-pole", force = force, position = machine.position, radius = 150 })) do
-    if net_has_power(s, force, p.electric_network_id, p.position) then
+    -- (not a building's own hidden pole, as Power Propagation adds: its wires reach 1 tile)
+    if p.prototype.get_max_wire_distance(p.quality) >= 3 and net_has_power(p, seen) then
       local d = dist2(p.position, machine.position)
       if not fd or d < fd then from, fd = p, d end
     end
@@ -1886,10 +1897,12 @@ local function power_to(m, machine, depth)
   if not item then return nil, "I don't know how to make electric poles here." end
   if have_count(m, item) == 0 then return plan(m, item, 5, depth + 1) end
   local pp = prototypes.item[item].place_result
-  local reach, supply = pp.get_max_wire_distance() - 0.5, pp.get_supply_area_distance()
+  local is_pole = from.type == "electric-pole"
+  -- (a wire spans the shorter reach of its two poles: from a small pole, a medium one goes 7.5 out, not 9)
+  local reach = math.min(pp.get_max_wire_distance(), is_pole and from.prototype.get_max_wire_distance(from.quality) or math.huge) - 0.5
+  local supply = pp.get_supply_area_distance()
   local dx, dy = machine.position.x - from.position.x, machine.position.y - from.position.y
   local d = math.sqrt(dx * dx + dy * dy)
-  local is_pole = from.type == "electric-pole"
   for _, step in ipairs(is_pole and { reach, reach - 1.5, reach - 3 } or { 3, 4, 2 }) do
     step = math.min(step, math.max(d - supply - 1, 1))
     local at = s.find_non_colliding_position(pp.name, { x = from.position.x + dx / d * step, y = from.position.y + dy / d * step }, 2, 0.5, true)
