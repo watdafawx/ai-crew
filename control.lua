@@ -2363,7 +2363,8 @@ local function fight(m)
 end
 
 -- Your buildings under attack: every armed fighter of the crew within 160 tiles drops what it's doing and rushes
--- over (flying, with jetpacks), fights there until it has been quiet for 5 seconds, then goes back to its work
+-- over (flying, with jetpacks), fights there until it has been quiet for 5 seconds, then goes back to its work, or
+-- with none, back to where it stood (a trip of its own, see JOBS.back)
 local function alarm(surface, force, ent)
   local pos = ent.position
   for _, m in pairs(crew()) do
@@ -2373,6 +2374,11 @@ local function alarm(surface, force, ent)
       if gun_range(m) == 0 then arm(m) end
       if gun_range(m) > 0 then
         stop_mining(m)
+        local j = m.jobs[1]
+        if not m.trip_from and (not j or j.kind == "back") then -- (standing about, or on its way back from a trip)
+          m.trip_from = j and j.at or { x = e.position.x, y = e.position.y }
+          if j then table.remove(m.jobs, 1) end
+        end
         table.insert(m.jobs, 1, { kind = "defend", at = { x = pos.x, y = pos.y }, n = 0, skip = {} })
         m.wait_until = nil
         if game.tick - (storage.alarm_said or -3600) > 1800 then
@@ -2404,10 +2410,10 @@ JOBS.defend = function(m, job)
   return false
 end
 
--- Trips of their own (fuel, what a need or the goal takes, fish, work round the base): where they stood when they took
--- it on is kept (m.trip_from), and once there is nothing more to do they go back there, so they're still about the
--- base: walking, flying when far. Not when it's within 16 tiles, nor when they roam or follow you (that brings them
--- back). An order forgets the place. (Kept in think, gone back to from idle)
+-- Trips of their own (fuel, what a need or the goal takes, fish, work round the base, a fight): where they stood when
+-- they took it on is kept (m.trip_from), and once there is nothing more to do they go back there, so they're still
+-- about the base: walking, flying when far. Not when it's within 16 tiles, nor when they roam or follow you (that
+-- brings them back). An order forgets the place. (Kept in think and alarm, gone back to from idle)
 JOBS.back = function(m, job)
   job.t0 = job.t0 or game.tick
   if m.roam or m.follow and owner_char(m) or game.tick - job.t0 > 3600 then return true end -- (roaming, or following you: their own way)

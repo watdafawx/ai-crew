@@ -1,6 +1,6 @@
 -- Headless check of defending: guns and armor at home but no fish. Rook and Mara go fishing at the pond 30 tiles out
 -- (8 fish caught by hand: 20 each) first, and come back. Then biters attack a wall and a chest 70 tiles from home: the
--- crew rush there (flying), kill them all and the chest survives.
+-- crew rush there (flying), kill them all, the chest survives, and they come home.
 local out, checks = {}, {}
 local function log(s) out[#out + 1] = s helpers.write_file("ac-defend.txt", table.concat(out, "\n") .. "\n") end
 local function check(name, ok) checks[#checks + 1] = { name, ok and true or false } end
@@ -74,6 +74,12 @@ script.on_event(defines.events.on_tick, function(ev)
       check("flew there (" .. flights .. " flights)", flights > 0)
       check("killed every biter (by t=" .. tostring(storage.cleared) .. ")", storage.cleared ~= nil)
       check("the chest they attacked still stands", storage.target.valid)
+      local far = 0
+      for i, name in ipairs(NAMES) do
+        local p = remote.call("ai-crew", "status", name).position
+        far = math.max(far, math.sqrt((p.x - 2 * i) ^ 2 + (p.y - 2) ^ 2))
+      end
+      check(string.format("back home after the fight (%.0f tiles out at most)", far), far < 8)
       local fails = 0
       for _, k in ipairs(checks) do log((k[2] and "PASS " or "FAIL ") .. k[1]) if not k[2] then fails = fails + 1 end end
       log(fails == 0 and "ALL PASS" or (fails .. " FAILED"))

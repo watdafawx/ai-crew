@@ -102,7 +102,7 @@ minute later, same name and settings, empty-handed (ADA announces both).
 
 **Defending the base.** When enemies hit any of your buildings (walls, turrets, machines), every armed fighter within
 160 tiles drops what it's doing, rushes over (flying, with jetpacks) and fights there until it has been quiet for 5
-seconds, then goes back to its work. In a fight they shoot the most hurt biter in range first (else the nearest
+seconds, then goes back to its work (with none, back to where it stood). In a fight they shoot the most hurt biter in range first (else the nearest
 enemy), step back from a biter right on them and keep shooting, and eat a fish whenever 80 health is missing (sooner
 below half). With no fish left anywhere in reach they go fishing when there's a fish within 250 tiles: the nearest
 fish in the water, caught by hand, up to 20, for a minute at most (a fish they can't get to in 15 seconds they leave).
@@ -219,7 +219,7 @@ python test/run.py ac-upgrade 18010 headless game: upgrade marks done like a pla
 python test/run.py ac-arm 18010    headless game: no weapons anywhere: makes a submachine gun and magazines
 python test/run.py ac-arm2 36010   headless game: magazines but no shells: submachine guns, not shotguns; stray ammo fixed
 python test/run.py ac-human 8900   headless game: orders in normal chat; a hand's pace; looking round; trips to the chest; notes, keep out; offers
-python test/run.py ac-defend 9100  headless game: go fishing with no fish, and come back; rush (flying) to biters attacking a wall, kill them
+python test/run.py ac-defend 9100  headless game: go fishing with no fish, and come back; rush (flying) to biters attacking a wall, kill them, come home
 python test/run.py ac-spam 7300    headless game: no gun, a shotgun short of wood: a few lines in 2 minutes, not a flood
 python test/run.py ac-car 12100    headless game: fuel a car, drive 120 tiles to a rock and back; no fuel: mine coal for a furnace
 python test/run.py ac-train 9100   headless game: ride a train to the far stop, mine there, get off a stalled train, walk home
