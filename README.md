@@ -7,6 +7,12 @@ power and whole production lines when they need them), all from a window in game
 (Satisfactory style) announces your milestones. Single player and multiplayer (in multiplayer the AI needs every
 player and the server on FSE, with `fse-std`).
 
+## Themes
+
+The crew window follows the theme each player picks in [FSE std](https://github.com/watdafawx/fse#themes)'s theme window (its button on the shortcut bar), when FSE std 0.6+ is installed: 12 themes, colours edited live with the FSE loader. Without FSE std it looks as before.
+
+![The crew window in Vulcanus, Fulgora and Aquilo](images/themes.jpg)
+
 ## Install
 
 1. Copy (or symlink) this folder into your mods folder as `ai-crew` (`%APPDATA%\Factorio\mods\ai-crew`) and enable
