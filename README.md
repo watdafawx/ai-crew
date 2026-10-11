@@ -192,8 +192,10 @@ window's settings (the gear by its close button; Save & test tells you at once w
 
 Or set `OPENROUTER_API_KEY` (etc.) before starting the game. The Model setting overrides the pick.
 
-Voices: `uv pip install --system edge-tts` for natural neural voices (each crew member has their own); without it
-Windows' built-in voices are used. Toggle crew voices, ADA, and "ADA words her lines with the AI" per player.
+Voices: the crew speak in [Kokoro](https://github.com/thewh1teagle/kokoro-onnx)'s voices, run on your own computer
+(`uv pip install --system kokoro-onnx`), each member their own (British and American, men and women). Until Kokoro's
+model is there (below), or without it, edge-tts' online voices speak (`uv pip install --system edge-tts`), else
+Windows' built-in ones. Toggle crew voices, ADA, and "ADA words her lines with the AI" per player.
 
 ADA's voice: Satisfactory's ADA is, by the community's ear, Google's WaveNet `en-US-Wavenet-C` with a multi-voice
 chorus and a doubled, slightly detuned echo. Here a neural voice (pick it in Settings; **Hear** plays a line) goes
@@ -201,7 +203,7 @@ through the same effects with ffmpeg when it's installed (`winget install Gyan.F
 each line: a synthesized one (two rising bell tones with an echo), or your own `ada-chime.wav` put next to `aicrew.py`.
 
 ADA's default voice, **heart**, runs on your own computer: [Kokoro](https://github.com/thewh1teagle/kokoro-onnx)'s
-`af_heart` (`uv pip install --system kokoro-onnx`). Its model (~350 MB) downloads once, on ADA's first line, into
+`af_heart` (`uv pip install --system kokoro-onnx`). Its model (~350 MB) downloads once, on the first spoken line, into
 `%LOCALAPPDATA%\ai-crew\kokoro`; she speaks as Ava until it's there. The others (ava, jenny, aria, emma, michelle) are
 edge-tts' online voices.
 

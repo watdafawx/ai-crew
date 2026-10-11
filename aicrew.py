@@ -8,8 +8,8 @@ Lua calls (strings in, JSON strings out):
   aicrew:speak  {text, voice}   queued and spoken on a thread; returns at once
 
 Every provider speaks the OpenAI chat API. Keys are free to get (see NO_KEY); Ollama needs none.
-Voices: edge-tts when installed (uv pip install edge-tts), else Windows' own SAPI voices. ADA's default "heart" voice
-is local: Kokoro (uv pip install kokoro-onnx), falling back to those.
+Voices: Kokoro on this computer (uv pip install kokoro-onnx; ADA's "heart" and one voice per crew member), else
+edge-tts when installed (uv pip install edge-tts), else Windows' own SAPI voices.
 """
 import json
 import os
@@ -249,15 +249,15 @@ def check(s):
     req = json.loads(s or "{}")
     llm = req.get("llm") or {}
     try:
-        import edge_tts  # noqa: F401
-        tts = "edge-tts (natural voices)"
-    except ImportError:
-        tts = "Windows voices (uv pip install edge-tts for natural ones)"
-    try:
         import kokoro_onnx  # noqa: F401
-        tts += "; ADA's heart voice: Kokoro (local)"
+        tts = "Kokoro (local): the crew and ADA's heart voice"
     except ImportError:
-        tts += "; ADA's heart voice: uv pip install kokoro-onnx"
+        tts = "Kokoro: uv pip install kokoro-onnx for local voices"
+    try:
+        import edge_tts  # noqa: F401
+        tts += "; edge-tts (online) while it can't"
+    except ImportError:
+        tts += "; Windows voices while it can't (uv pip install edge-tts for natural ones)"
     out = {"tts": tts}
     try:
         name, _, key, model = pick_provider(llm)
@@ -310,6 +310,9 @@ State: {json.dumps(ctx, separators=(",", ":"))}"""
 EDGE_VOICES = {"ada": "en-US-AvaNeural"}
 CREW_VOICES = ["en-GB-RyanNeural", "en-US-JennyNeural", "en-GB-SoniaNeural", "en-US-GuyNeural", "en-AU-NatashaNeural",
                "en-US-AndrewNeural", "en-IE-EmilyNeural", "en-AU-WilliamNeural"]
+# the same members in Kokoro's voices (local), each like its edge-tts one: (voice, its accent)
+KOKORO_CREW = [("bm_george", "en-gb"), ("af_bella", "en-us"), ("bf_emma", "en-gb"), ("am_michael", "en-us"),
+               ("af_nicole", "en-us"), ("am_adam", "en-us"), ("bf_isabella", "en-gb"), ("bm_lewis", "en-gb")]
 _queue = queue.Queue()
 _worker = None
 _sapi = None
@@ -324,6 +327,14 @@ def voice_for(voice):
         return CREW_VOICES[int(voice) % len(CREW_VOICES)]
     except (TypeError, ValueError):
         return CREW_VOICES[0]
+
+
+def kokoro_voice_for(voice):
+    """(Kokoro voice, accent) for a crew member's voice number"""
+    try:
+        return KOKORO_CREW[int(voice) % len(KOKORO_CREW)]
+    except (TypeError, ValueError):
+        return KOKORO_CREW[0]
 
 
 def _play_mp3(path):
@@ -375,8 +386,8 @@ def _ada_fx(path, dest=None):
     return True
 
 
-# ADA's "heart" voice: Kokoro's af_heart, run on this computer (uv pip install kokoro-onnx). Its model (~350 MB) is
-# fetched once into KOKORO_DIR on a thread; Ava (edge-tts) or Windows' voice speaks until it's there.
+# Kokoro, run on this computer (uv pip install kokoro-onnx): ADA's "heart" voice (af_heart) and the crew's. Its model
+# (~350 MB) is fetched once into KOKORO_DIR on a thread; edge-tts or Windows' voices speak until it's there.
 KOKORO_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/"
 KOKORO_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir(), "ai-crew", "kokoro")
 KOKORO_FILES = ("kokoro-v1.0.onnx", "voices-v1.0.bin")
@@ -411,13 +422,13 @@ def kokoro_model():
     return _kokoro
 
 
-def _say_kokoro(text):
-    """text in ADA's heart voice, with her effects; False when Kokoro can't (yet): another voice speaks instead"""
+def _say_kokoro(text, voice="af_heart", lang="en-us", ada=True):
+    """text in a Kokoro voice (ADA's heart one with her effects); False when Kokoro can't (yet): another voice speaks"""
     try:
         k = kokoro_model()
         if not k:
             return False
-        samples, rate = k.create(text, voice="af_heart", speed=0.95, lang="en-us")
+        samples, rate = k.create(text, voice=voice, speed=0.95 if ada else 1.05, lang=lang)
     except Exception as e:  # noqa: BLE001 - not installed, or a broken model: Ava instead
         if not isinstance(e, ImportError):
             print(f"[aicrew] kokoro: {e}")
@@ -432,7 +443,7 @@ def _say_kokoro(text):
             w.setsampwidth(2)
             w.setframerate(rate)
             w.writeframes((samples.clip(-1, 1) * 32767).astype("<i2").tobytes())
-        if _ada_fx(path, mp3):
+        if ada and _ada_fx(path, mp3):
             _play_mp3(mp3)
         else:
             import winsound
@@ -494,6 +505,8 @@ def _say(text, voice):
         except Exception as e:  # noqa: BLE001 - no chime is fine
             print(f"[aicrew] chime: {e}")
     if voice == "ada:heart" and _say_kokoro(text):
+        return
+    if not str(voice).startswith("ada") and _say_kokoro(text, *kokoro_voice_for(voice), ada=False):
         return
     try:
         import asyncio

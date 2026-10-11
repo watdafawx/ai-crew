@@ -3508,7 +3508,7 @@ end
 
 PROVIDER_CHOICES = { "auto", "openrouter", "groq", "gemini", "cerebras", "mistral", "pollinations", "ollama", "off" }
 TOGGLES = {
-  { "voices", "Crew speak out loud", "Text to speech for the crew's lines (edge-tts voices if installed, else Windows')" },
+  { "voices", "Crew speak out loud", "Text to speech for the crew's lines (Kokoro's local voices, else edge-tts, else Windows')" },
   { "ada", "ADA announces milestones", "Research done, first science, rocket launches, deaths" },
   { "ada-llm", "ADA words her lines with the AI", "One AI request per announcement" },
   { "chatter", "Crew chatter while you're away", "After 2 minutes without input, every minute or so" },
