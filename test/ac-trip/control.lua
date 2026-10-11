@@ -1,6 +1,7 @@
 -- Headless check of coming back from a trip: Rook stands 40 tiles west of home, where the chest is (fish in it, no
 -- fuel). A stone furnace by the chest has none either, and the only coal is a patch 60 tiles east. Rook goes and mines
--- some, brings it home, fuels the furnace, and then goes back to where it stood.
+-- some, brings it home, fuels the furnace, and then goes back to where it stood. Hurt there with no fish to eat, it
+-- falls back home, heals, and comes back again.
 local out, checks = {}, {}
 local function log(s) out[#out + 1] = s helpers.write_file("ac-trip.txt", table.concat(out, "\n") .. "\n") end
 local function check(name, ok) checks[#checks + 1] = { name, ok and true or false } end
@@ -39,11 +40,28 @@ script.on_event(defines.events.on_tick, function(ev)
       storage.fuelled = t
       log("furnace fuelled at t=" .. t)
     end
-    if storage.fuelled and not storage.back and d < 4 then storage.back = t log("back where it stood at t=" .. t) end
+    if storage.fuelled and not storage.back and d < 4 then
+      storage.back = t
+      log("back where it stood at t=" .. t)
+      -- then hurt, with no fish anywhere: it falls back home, heals, and comes back again
+      for _, e in pairs(s.find_entities_filtered({ type = "fish", area = { { -400, -400 }, { 400, 400 } } })) do e.destroy() end
+      storage.chest.clear_items_inside()
+      local rook = s.find_entities_filtered({ type = "character", position = p, radius = 0.3 })[1]
+      rook.get_main_inventory().remove({ name = "raw-fish", count = 1000 })
+      rook.health = rook.max_health * 0.3
+      storage.hurt = t
+    end
+    if storage.hurt and not storage.fell_back and remote.call("ai-crew", "status", "Rook").retreat and d > 30 then
+      storage.fell_back = t
+      log("fell back hurt at t=" .. t)
+    end
+    if storage.fell_back and not storage.back2 and d < 4 then storage.back2 = t log("back again at t=" .. t) end
     if t == 7200 then
       check("went off for coal (left at t=" .. tostring(storage.left) .. ")", storage.left ~= nil)
       check("fuelled the furnace (at t=" .. tostring(storage.fuelled) .. ")", storage.fuelled ~= nil)
-      check(string.format("came back where it stood (at t=%s, %.0f tiles from it)", tostring(storage.back), d), storage.back ~= nil)
+      check(string.format("came back where it stood (at t=%s)", tostring(storage.back)), storage.back ~= nil)
+      check("hurt, fell back home (at t=" .. tostring(storage.fell_back) .. ")", storage.fell_back ~= nil)
+      check(string.format("healed, came back again (at t=%s, %.0f tiles from it)", tostring(storage.back2), d), storage.back2 ~= nil)
       local fails = 0
       for _, k in ipairs(checks) do log((k[2] and "PASS " or "FAIL ") .. k[1]) if not k[2] then fails = fails + 1 end end
       log(fails == 0 and "ALL PASS" or (fails .. " FAILED"))

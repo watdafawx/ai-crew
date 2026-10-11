@@ -2177,6 +2177,9 @@ self_craft = function(m, item, count)
   if not handcraft_recipe(m.entity.force, item) then
     return add_need(m.owner, item, count, "the crew's guns")
   end
+  if not m.jobs[1] and not m.trip_from then -- (standing about: a trip of its own, to the chests; back after)
+    m.trip_from = { x = m.entity.position.x, y = m.entity.position.y }
+  end
   table.insert(m.jobs, 1, { kind = "craft", recipe = item, count = count, keep = true, n = 0, skip = {} })
   return true
 end
@@ -2315,6 +2318,9 @@ local function fight(m)
   if m.retreat then
     if hp > 0.8 then m.retreat = nil end
   elseif hp < 0.5 then
+    if not m.jobs[1] and not m.trip_from then -- (standing about: back where it stood once healed)
+      m.trip_from = { x = e.position.x, y = e.position.y }
+    end
     m.retreat, m.target = true, nil
     e.shooting_state = { state = defines.shooting.not_shooting, position = e.position }
     stop_mining(m)
@@ -2410,11 +2416,13 @@ JOBS.defend = function(m, job)
   return false
 end
 
--- Trips (fuel, what a need or the goal takes, fish, work round the base, a fight, clearing nests): where they stood when
--- they took it on is kept (m.trip_from), and once there is nothing more to do they go back there, so they're still
--- about the base: walking, flying when far. Not when it's within 16 tiles, nor when they roam or follow you (that
--- brings them back). Other orders forget the place. (Kept in think, alarm and add_job, gone back to from idle)
+-- Trips (fuel, what a need or the goal takes, fish, work round the base, a fight, clearing nests, falling back hurt,
+-- a gun or ammo made for itself): where they stood when they took it on is kept (m.trip_from), and once there is
+-- nothing more to do they go back there, so they're still about the base: walking, flying when far. Not when it's
+-- within 16 tiles, nor when they roam or follow you (that brings them back). Other orders forget the place. (Kept in
+-- think, alarm, add_job, self_craft and fight; gone back to from idle)
 JOBS.back = function(m, job)
+  if m.retreat then return false end -- (hurt: healing where it fell back to first)
   job.t0 = job.t0 or game.tick
   if m.roam or m.follow and owner_char(m) or game.tick - job.t0 > 3600 then return true end -- (roaming, or following you: their own way)
   if dist2(m.entity.position, job.at) > 24 * 24 and fly(m, job.at) then return false end

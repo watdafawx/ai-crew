@@ -84,7 +84,7 @@ the nearest powered pole, or from a generator; with no power anywhere they build
 pump, boiler, steam engine, each trial-placed and kept only when its pipes connect, so modded ones work too). Boilers,
 furnaces and burner drills near you are kept fuelled whenever there's coal or wood about; with none in stock while
 they run dry, the crew go and get some (coal from the nearest patch, else wood), then fuel them. From a trip of their
-own like that (fuel, what a need or the goal takes, fishing, work round the base), once there's nothing more to do,
+own like that (fuel, what a need or the goal takes, fishing, work round the base, a gun or ammo made for itself), once there's nothing more to do,
 they go back to where they stood (more than 16 tiles away, and unless they roam or follow you). What they can't do: research
 (they tell you what needs researching), fluids other than water to steam, and planning big layouts.
 - **Chat box**: plain orders ("get 50 iron ore", "craft 10 gears", "goal 200 iron gear wheel") run as is; anything
@@ -96,7 +96,7 @@ they go back to where they stood (more than 16 tiles away, and unless they roam 
 **Combat.** With **Fight** ticked (each crew row, on by default) a crew member arms itself from your stock (best
 armor; a gun whose ammo is in stock, or can be made, before a longer-range one with none; that ammo in the slot
 beside it, topped up; makes the gun and its ammo when there are none) and shoots enemies in range while it works. Hurt, it eats raw fish
-if there is any; below half health it falls back to you and rejoins once healed. **Clear nests** (or "attack" in
+if there is any; below half health it falls back to you and rejoins once healed (with nothing to rejoin, back where it stood). **Clear nests** (or "attack" in
 chat) sends them after the spawners and worms within 96 tiles of you, and back where they stood after. A crew member who dies is rebuilt at home a
 minute later, same name and settings, empty-handed (ADA announces both).
 
@@ -225,7 +225,7 @@ python test/run.py ac-car 12100    headless game: fuel a car, drive 120 tiles to
 python test/run.py ac-train 9100   headless game: ride a train to the far stop, mine there, get off a stalled train, walk home
 python test/run.py ac-belt 6100    headless game: across a field of running belts and back; standing on a belt, not carried off
 python test/run.py ac-bots 3610   headless game: crafts gears from plates on a belt; steps off a ghost for construction robots
-python test/run.py ac-trip 7300   headless game: no fuel: mine coal 60 tiles out, fuel a furnace at home, back where it stood
+python test/run.py ac-trip 7300   headless game: no fuel: mine coal 60 tiles out, fuel a furnace at home, back where it stood; hurt: falls back, heals, back again
 python test/run.py ac-hint 18800   headless game: starved machines pointed out (once), research suggested after 5 idle minutes
 python test/run.py ac-jet 6100     headless game: a rock inside a closed ring of walls: fly in, mine it, fly out
 python test/run.py ac-roam 36010   headless game: roams round home, powers a dark assembler, finds and kills a worm
