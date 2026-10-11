@@ -35,245 +35,8 @@ local ACKS = { build = { "On it.", "Building.", "Let's get it up." }, deconstruc
 local TRAITS = { Rook = "gruff", Mara = "upbeat", Juno = "precise", Bolt = "eager", Pip = "cheerful", Sable = "laconic",
   Tess = "precise", Orin = "gruff" }
 local TRAIT_ORDER = { "gruff", "upbeat", "precise", "eager", "cheerful", "laconic" }
--- stock lines by event, then manner ("any" is everyone's); {item}, {n} and {other} are filled in. A member goes
--- through every line of an event before one comes round again
-local LINES = {
-  hello = {
-    gruff = { "Right. Where's the work.", "Another factory. Fine. Point me at it." },
-    upbeat = { "Hi! Oh, this place has potential.", "Reporting in! Let's make it shine." },
-    precise = { "Online. Checking the ratios already.", "Present. Show me the bottleneck." },
-    eager = { "Here! What's first? Anything. Give me anything.", "Ready, ready, ready." },
-    cheerful = { "Hello! Is that a furnace? I love furnaces.", "Hi! Wow, it's big out here." },
-    laconic = { "Here.", "Ready when you are." },
-    any = { "Reporting for duty.", "Where do you need me?" },
-  },
-  bye = {
-    gruff = { "Fine. I'll be off." }, upbeat = { "Aw. It was fun! Bye!" }, precise = { "Logging off. Inventory handed over." },
-    eager = { "Already? Okay. Call me back!" }, cheerful = { "Bye! Keep the belts tidy!" }, laconic = { "See you." },
-  },
-  ack = {
-    gruff = { "Yeah, yeah. On it.", "Fine.", "Consider it done." },
-    upbeat = { "You got it!", "Love it, on my way.", "Ooh, a job!" },
-    precise = { "Understood.", "Queued.", "Acknowledged." },
-    eager = { "Already going!", "Yes! Next after that?", "On it on it on it." },
-    cheerful = { "Okay!", "Ooh, okay!", "Right away!" },
-    laconic = { "Sure.", "Mm.", "On it." },
-  },
-  contact = {
-    gruff = { "Biters. Of course.", "Here they come. Ugly as ever.", "Hostiles. Don't make me put down the wrench." },
-    upbeat = { "Uh, company!", "Biters! Okay, okay, we've got this!" },
-    precise = { "Contact, {item}.", "Hostile in range. Engaging." },
-    eager = { "Biters! Finally, some action!", "Mine! I've got this one!" },
-    cheerful = { "Eek! Biters!", "Ah! Shoo! Shoo!" },
-    laconic = { "Contact.", "Biters." },
-    any = { "Hostiles!", "Weapons free." },
-  },
-  hurt = {
-    gruff = { "Took a bite. Pulling back.", "Ow. Right, that's enough of that." },
-    upbeat = { "Okay, ouch, falling back!", "I'm hurt, back in a sec!" },
-    precise = { "Below half health. Retreating.", "Armour's failing. Withdrawing." },
-    eager = { "I'm fine! I'm not fine. Pulling back!", "Need a breather, then round two!" },
-    cheerful = { "Ow ow ow. Coming back!", "That hurt! Retreating!" },
-    laconic = { "Hit. Falling back.", "Need a minute." },
-  },
-  back = {
-    gruff = { "Rebuilt. Still annoyed.", "Back. Who's buying the fish?" },
-    upbeat = { "I'm back! Missed me?", "Good as new!" },
-    precise = { "Reconstruction complete. Resuming.", "Back online. Picking up where I left off." },
-    eager = { "Back! Round two!", "Rebuilt and ready, what did I miss?" },
-    cheerful = { "I'm back! Everything's shiny!", "Hello again!" },
-    laconic = { "Back.", "Round two." },
-  },
-  down = {
-    gruff = { "{other}'s down. Biters'll pay for that.", "Lost {other}. Watch your backs." },
-    upbeat = { "No! {other}! ...They'll be back, right?", "{other} went down. Sixty seconds, hang in there." },
-    precise = { "{other} is down. Reconstruction in sixty seconds.", "We lost {other}. Their position was overextended." },
-    eager = { "{other}! I'll cover for them!", "{other}'s down, I'll pick up their work!" },
-    cheerful = { "Oh no, {other}!", "{other}! Come back soon!" },
-    laconic = { "{other}'s down.", "Lost {other}." },
-  },
-  goal = {
-    gruff = { "{item}, done. Don't get used to it.", "There. {item}. Next?" },
-    upbeat = { "We did it! {item}, all there!", "Goal done! Look at that pile of {item}!" },
-    precise = { "Goal met: {item}. On schedule, roughly.", "{item}: target reached." },
-    eager = { "Done! What's the next goal? Bigger?", "{item}, finished! Give us another!" },
-    cheerful = { "Yay! All the {item}!", "We made so much {item}!" },
-    laconic = { "{item}. Done.", "That's the {item}." },
-  },
-  research = {
-    gruff = { "{item}. About time.", "New toys. {item}." },
-    upbeat = { "{item} is done! Ooh, what can we build now?", "Research! {item}! Love that." },
-    precise = { "{item} unlocked. That changes the build order.", "{item} complete. Noted." },
-    eager = { "{item}! Can we use it right now?", "Ooh, {item}! I want to build one!" },
-    cheerful = { "{item}! So fancy!", "We learned {item}!" },
-    laconic = { "{item}. Useful.", "Hm. {item}." },
-  },
-  roam = {
-    gruff = { "Fine. I'll go find my own work.", "Going for a walk. Don't touch my stuff." },
-    upbeat = { "Ooh, exploring! I'll see what needs doing.", "Off to have a look around!" },
-    precise = { "Surveying the area. I'll report anything off.", "Patrolling. I'll flag problems." },
-    eager = { "Free rein? Yes! I'll find things to fix!", "Going! I'll find work!" },
-    cheerful = { "Adventure!", "I'm gonna look at all the machines!" },
-    laconic = { "Having a look round.", "I'll wander." },
-  },
-  nest = {
-    gruff = { "Nest out here. Burning it.", "Biter nest. Not on my watch." },
-    upbeat = { "Found a nest! Going in!", "There's a nest over here, clearing it!" },
-    precise = { "{item} spotted. Moving to clear it.", "Nest at the edge of the base. Engaging." },
-    eager = { "A nest! Mine! I've got it!", "Nest! Going, going!" },
-    cheerful = { "A biter house! Bye, biter house!", "Found a nest! Eek, okay, going!" },
-    laconic = { "Nest. Handling it.", "Nest here." },
-  },
-  nest_unarmed = {
-    any = { "There's a nest out here. I'd want a gun before I go near it.", "Nest spotted. Not going near it bare-handed." },
-  },
-  dark = {
-    gruff = { "This {item} has no power. Running a pole to it.", "Dead {item} over here. Fixing it." },
-    upbeat = { "This {item}'s sitting in the dark! I'll wire it up.", "Poor {item}, no power. On it!" },
-    precise = { "Unpowered {item}. Extending the grid.", "{item} has no power. Connecting it." },
-    eager = { "Dark {item}! I'll run poles!", "No power here, fixing it!" },
-    cheerful = { "This {item} is sleeping! Waking it up.", "No power here! Poles, go!" },
-    laconic = { "{item}'s dark. Poles.", "No power here. Fixing." },
-  },
-  dark_note = {
-    gruff = { "This {item} is dark and I can't fix it from here.", "No power on this {item}. Not my mess." },
-    precise = { "{item} without power. Grid needs work there.", "Unpowered {item} noted." },
-    any = { "This {item} has no power.", "There's a {item} over here doing nothing. No power." },
-  },
-  starved = {
-    gruff = { "This {item} is starving. Nothing coming in.", "Idle {item}. Someone forgot an input." },
-    upbeat = { "This {item}'s waiting on ingredients.", "Hungry {item} over here!" },
-    precise = { "{item} short of inputs. That line's underfed.", "Input shortage at this {item}." },
-    eager = { "This {item} needs more stuff! Want me to feed it?", "Starved {item} here!" },
-    cheerful = { "This {item} is hungry!", "The {item} has nothing to make!" },
-    laconic = { "{item}'s starved.", "Nothing going into this {item}." },
-  },
-  backed = {
-    gruff = { "This {item}'s backed up. Output's going nowhere.", "Full {item}. Nobody's taking from it." },
-    precise = { "{item} output blocked. Downstream's not keeping up.", "Output full at this {item}." },
-    any = { "This {item} is full up. Nothing's taking its output.", "{item} backed up over here." },
-  },
-  welcome = {
-    gruff = { "There you are. Didn't touch anything. Much.", "Oh, you're back. Good, the belts missed you." },
-    upbeat = { "Welcome back! We kept things running!", "Hey, you're back! So much happened. Okay, not much." },
-    precise = { "Welcome back. Nothing critical while you were gone.", "You're back. Status: nominal." },
-    eager = { "You're back! Can we do something big now?", "Finally! What are we building?" },
-    cheerful = { "Yay, you're back!", "Hi again! I missed you!" },
-    laconic = { "Back.", "Hey." },
-  },
-  noted = {
-    gruff = { "Noted. Don't make me write it down twice.", "Fine. I'll remember." },
-    upbeat = { "Got it, noted!", "Ooh, good to know!" },
-    precise = { "Logged.", "Noted, with coordinates." },
-    eager = { "Remembered! Anything else to remember?", "Got it!" },
-    cheerful = { "I'll remember! Probably!", "Noted!" },
-    laconic = { "Noted.", "Got it." },
-  },
-  keep_out = {
-    gruff = { "Fine. Hands off. Your mess, your rules.", "Not touching it. Happy?" },
-    upbeat = { "Hands off, promise!", "Got it, we'll leave this bit alone!" },
-    precise = { "Keep-out zone logged. Radius twenty-four.", "Understood. We won't take from or touch anything here." },
-    eager = { "Won't touch a thing! Not even a little.", "Hands off! Got it!" },
-    cheerful = { "I won't touch! Even the shiny bits!", "Okay, no touching!" },
-    laconic = { "Hands off. Got it.", "Leaving it be." },
-  },
-  propose = {
-    gruff = { "We keep running out of {item}. Want me to make {n}?", "{item}'s always short. Shall I fix that?" },
-    upbeat = { "Hey, we're always short on {item}! Want me to make a big batch?", "Ooh, idea: {n} {item}? Say yes!" },
-    precise = { "{item} consumption outpaces production. Shall I make {n}?", "By my numbers we're short on {item}. Make {n}?" },
-    eager = { "Can I make {item}? We need {n}! Can I? Yes?", "{item}! We're short! Let me make some?" },
-    cheerful = { "We're out of {item} a lot. Should I make some?", "More {item}? I could make {n}!" },
-    laconic = { "Short on {item}. Want {n}?", "{item}'s short. Make some?" },
-  },
-  propose_line = {
-    gruff = { "{item} keeps running dry. Want me to put a proper line down?", "We're always short on {item}. Line for it?" },
-    upbeat = { "We're always short on {item}! Want me to set up a line for it?", "Idea! A {item} line. Yes?" },
-    precise = { "{item}: consumption exceeds production. Shall I build a line for it?", "The numbers say {item} needs a line. Build one?" },
-    eager = { "Let me build a {item} line! Please? Yes?", "{item} line? I can start right now!" },
-    cheerful = { "Ooh, can we build a {item} line? We need one!", "A {item} line would be so nice. Should I?" },
-    laconic = { "{item}'s short. Line for it?", "Want a {item} line?" },
-  },
-  declined = {
-    gruff = { "Suit yourself.", "Fine. Your factory." },
-    upbeat = { "No worries!", "Okay, maybe later!" },
-    precise = { "Understood. I'll leave it.", "Noted. Not now." },
-    eager = { "Aw. Okay. Later then!", "Okay! Something else then!" },
-    cheerful = { "Okay!", "Aw, okay." },
-    laconic = { "Sure.", "Fine." },
-  },
-  alarm = {
-    gruff = { "They're at the {item}. Moving.", "Biters on our stuff. Not today." },
-    upbeat = { "They're hitting the {item}! On my way!", "Base under attack! Coming!" },
-    precise = { "Attack on the {item}. Responding.", "Hostiles at the {item}. Engaging." },
-    eager = { "Attack! I'm going! I'm already going!", "The {item}! Hold on, I'm coming!" },
-    cheerful = { "Hey! Leave the {item} alone!", "Eek, they're attacking! Coming!" },
-    laconic = { "Attack. Going.", "On it." },
-  },
-  fishing = {
-    gruff = { "Out of fish. Going fishing. Don't laugh.", "No fish left. I'll catch some." },
-    upbeat = { "Fishing trip! We're out of fish.", "Out of fish, off to the water!" },
-    precise = { "Fish stock at zero. Restocking.", "No healing supplies. Fishing." },
-    eager = { "Fishing! I love fishing! We need fish!", "Gone fishing, back soon!" },
-    cheerful = { "Fishies! I'll get some!", "Going fishing!" },
-    laconic = { "Fishing.", "Getting fish." },
-  },
-  hint_research = {
-    gruff = { "Labs are sitting idle. {item} next, I'd say.", "Nobody's researching anything. Try {item}." },
-    upbeat = { "Ooh, nothing's being researched! How about {item}?", "Labs are bored! {item} could be fun!" },
-    precise = { "Research queue is empty. {item} is the cheapest next step.", "No research running. I'd queue {item}." },
-    eager = { "Can we research {item}? Please? The labs are doing nothing!", "{item}! Let's research {item}!" },
-    cheerful = { "The labs are napping! Maybe {item}?", "What about researching {item}?" },
-    laconic = { "No research on. {item}?", "Labs idle. {item}." },
-  },
-  hint_stall = {
-    any = { "Been a quiet few minutes. Want to pick something big to build next?",
-      "We've not built anything in a while. A new line, maybe? Just say what.",
-      "Things have gone a bit still. More smelting would never hurt." },
-  },
-  hint_starved = {
-    any = { "{n} machines making {item} are waiting on {other}.", "The {item} machines are starved: no {other} coming in ({n} of them).",
-      "Heads up: {n} {item} machines have run out of {other}." },
-  },
-  hint_power = {
-    any = { "Power's running short: {n} machines on low power. More steam engines?", "We're browning out. {n} machines on low power.",
-      "Not enough power for everything. {n} machines are slowed down." },
-  },
-  hint_dark = {
-    any = { "{n} machines near you have no power at all. Want poles run to them?", "There are {n} dark machines round here." },
-  },
-  hint_backed = {
-    any = { "{n} {item} machines are backed up: nothing takes what they make.", "The {item} output is full. {n} machines just sitting there." },
-  },
-  hint_over = {
-    any = { "We made {n} {item} in ten minutes and hardly used any. Put it to work?",
-      "Loads of {item} piling up: {n} in ten minutes, almost none used." },
-  },
-  idle = {
-    gruff = { "Back in my day we carried ore by hand. Oh wait.", "If one more belt goes sideways I'm quitting.",
-      "These biters chew through walls like they're paid to." },
-    upbeat = { "I reorganised that chest. You're welcome.", "Honestly? This base is coming along.",
-      "I love the sound of a furnace at full tilt." },
-    precise = { "Iron's running about twelve percent short, by my count.", "Someone has to say it: that belt is half empty.",
-      "I've been timing the inserters. Don't ask." },
-    eager = { "Is there more to build? There's always more to build.", "I could hand-craft a whole factory. Probably.",
-      "Can we build a train next? Please?" },
-    cheerful = { "The big drills are my favourite. They go brrr.", "I waved at a biter. It didn't wave back.",
-      "Do you think the trees mind?" },
-    laconic = { "Quiet.", "Belts hum. Nice.", "Too many trees." },
-    any = { "Quiet out here. You can hear the belts humming.", "Do you think the pioneer knows we talk when they're away?",
-      "I named that iron chest Gerald. Don't tell anyone.", "Smelting is just cooking for rocks, if you think about it.",
-      "If the pioneer asks, I was working the whole time.", "I counted the trees again. Still too many.",
-      "Biters have been quiet. I don't like it.", "One day robots will do all this. Then what do we do?" },
-  },
-  reply = {
-    gruff = { "Don't jinx it, {other}.", "Back to work, {other}.", "Mm. Sure." },
-    upbeat = { "Hah, fair!", "I was about to say the same!", "Aw, {other}." },
-    precise = { "Statistically, you're right.", "Noted, {other}.", "Debatable." },
-    eager = { "Me too! Wait, what?", "Can we fix it? Let's fix it.", "Ooh, good point, {other}!" },
-    cheerful = { "Hee. {other}, you're funny.", "Shh, they might hear you!" },
-    laconic = { "Mm-hm.", "Sure, {other}. Sure.", "Hah." },
-  },
-}
+-- stock lines by event, then manner (lines.lua)
+local LINES = require("lines")
 local ROAM = 40 -- roaming: how far from the player (or home) they wander
 
 -- AI jobs (Python: the LLM). Every peer records a job in storage the same way; only the peer of the player it is for
@@ -422,7 +185,9 @@ local function line(m, event, vars)
   local l = pick(fresh)
   used[l] = true
   m.recent[event] = used
-  return (l:gsub("{(%w+)}", function(k) return vars and vars[k] ~= nil and tostring(vars[k]) or "" end))
+  local text = l:gsub("{(%w+)}", function(k) return vars and vars[k] ~= nil and tostring(vars[k]) or "" end)
+  m.bank_line = { text = text, event = event } -- (say may have the AI word it)
+  return text
 end
 
 -- what happened lately, the crew's memory: the AI gets it with every request (saved; the last 20 per player)
@@ -459,6 +224,8 @@ end
 -- Who speaks, and how loud. how: nil = news (in chat and out loud, unless someone just spoke or this one has been
 -- talking a lot: then in chat only), "quiet" = routine (a bubble over its head, nothing else), "talk" = conversation
 -- (an answer to the player, chatter: always in chat and out loud). The same news twice within 5 minutes is a bubble.
+-- News from the line bank, with "Crew word their lines with the AI" on, goes to the AI first and comes back "worded":
+-- in its own words, said like news (the checks against the same news twice were done on the bank's line)
 -- turn to look at pos, standing still, as a player turns their character
 local function face(m, pos)
   local e = m.entity
@@ -468,6 +235,8 @@ local function face(m, pos)
 end
 
 local function say(m, text, how)
+  local bank = m.bank_line
+  m.bank_line = nil
   local e = m.entity
   local c = m.color
   local p = m.owner and game.get_player(m.owner) -- (they look at you when they talk, near you)
@@ -478,7 +247,7 @@ local function say(m, text, how)
     color = c, scale = 1.1, alignment = "center", time_to_live = 300 })
   if how == "quiet" then return end
   local t = game.tick
-  if how ~= "talk" then -- (any line it said in the last 5 minutes, not just the last one)
+  if how == nil then -- (any line it said in the last 5 minutes, not just the last one)
     m.news = m.news or {}
     if t - (m.news[text] or -18000) < 18000 then return end
     if table_size(m.news) > 40 then
@@ -492,13 +261,21 @@ local function say(m, text, how)
       for k, at in pairs(storage.crew_news) do if t - at >= 3600 then storage.crew_news[k] = nil end end
     end
   end
+  local player = m.owner and game.get_player(m.owner) or any_player()
+  if how == nil and bank and bank.text == text and t - (storage.voice_at or -180) >= 180 and t - (m.voice_at or -1200) >= 1200
+    and player and py() and player_setting(player, "ai-crew-lines-llm") and player_setting(player, "ai-crew-voices")
+    and jobs.start(player.index, "aicrew:line", helpers.table_to_json({ llm = llm_settings(player), name = m.name,
+      manner = trait(m), event = bank.event, text = text }), { kind = "line", owner = m.owner, who = m.name, text = text }) then
+    storage.voice_at, m.voice_at = t, t -- (its turn to speak, kept for when the words come back)
+    return
+  end
   game.print(string.format("[color=%g,%g,%g]%s:[/color] %s", c[1], c[2], c[3], m.name, text))
   m.lines = (m.lines or 0) + 1 -- (what reached the chat, the last few: for tests)
   m.last_lines = m.last_lines or {}
   table.insert(m.last_lines, t .. ": " .. text)
   if #m.last_lines > 8 then table.remove(m.last_lines, 1) end
-  -- (3 s between any two voiced lines, 20 s between one member's voiced news)
-  if how ~= "talk" and (t - (storage.voice_at or -180) < 180 or t - (m.voice_at or -1200) < 1200) then
+  -- (3 s between any two voiced lines, 20 s between one member's voiced news; worded news had its turn kept)
+  if how == nil and (t - (storage.voice_at or -180) < 180 or t - (m.voice_at or -1200) < 1200) then
     return
   end
   storage.voice_at, m.voice_at = t, t
@@ -3399,6 +3176,11 @@ local function on_answer(p, out)
     game.print("[color=" .. ADA_COLOR .. "][ADA][/color] " .. text)
     return speak(text, "ada")
   end
+  if p.kind == "line" then -- (a bank line in the member's own words; the bank's own when the AI can't)
+    local m = crew()[p.who]
+    if m and m.entity.valid then say(m, type(a.text) == "string" and a.text ~= "" and a.text:sub(1, 200) or p.text, "worded") end
+    return
+  end
   if p.kind == "check" then
     if not (a.provider or a.error) then a.error = "no answer" end
     ai_state()[p.owner] = a
@@ -3511,6 +3293,7 @@ TOGGLES = {
   { "voices", "Crew speak out loud", "Text to speech for the crew's lines (Kokoro's local voices, else edge-tts, else Windows')" },
   { "ada", "ADA announces milestones", "Research done, first science, rocket launches, deaths" },
   { "ada-llm", "ADA words her lines with the AI", "One AI request per announcement" },
+  { "lines-llm", "Crew word their lines with the AI", "Their news (biters, a nest, research, fishing...) in their own words: one AI request per line said out loud. Without an AI that answers, the stock lines" },
   { "chatter", "Crew chatter while you're away", "After 2 minutes without input, every minute or so" },
   { "hints", "Crew give hints", "Research to start, starved or backed-up machines, power, oversupply, what to do next when nothing's happened for 5 minutes" },
   { "jetpack", "Crew jetpacks", "They fly over what's in their way (and to a fight); off: they step through it a few tiles at a time" },
@@ -3873,7 +3656,7 @@ local function act(player, action, who, scripted)
     btn(r, "Hear", "ada_hear", nil, "ADA says a line in this voice", 60).enabled = py()
     local own = theme.fold(scroll, "What the crew do", false)
     for i, c in ipairs(TOGGLES) do
-      local parent = (c[1] == "voices" or c[1] == "ada" or c[1] == "ada-llm") and voice or own
+      local parent = (c[1] == "voices" or c[1] == "lines-llm" or c[1] == "ada" or c[1] == "ada-llm") and voice or own
       parent.add({ type = "checkbox", name = "aic_set_" .. c[1], caption = c[2], state = player_setting(player, "ai-crew-" .. c[1]) and true or false,
         tooltip = c[3] })
     end

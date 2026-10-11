@@ -4,6 +4,7 @@ Lua calls (strings in, JSON strings out):
   aicrew:ask    {message, to: [names], llm: {provider, key, model}, context}  -> {replies: [{who, text}], jobs: [...]}
   aicrew:ada    {text, llm}                                                 -> {text}  (ADA's line, reworded)
   aicrew:banter {llm, context}       -> {replies}  (chatter: idle while the player is away, or context.event reacted to)
+  aicrew:line   {llm, name, manner, event, text}  -> {text}  (a stock news line in that member's own words)
   aicrew:check  {llm}                       -> {provider, key (masked), source, ok, seconds, model, error, tts}
   aicrew:speak  {text, voice}   queued and spoken on a thread; returns at once
 
@@ -242,6 +243,35 @@ def ada(s):
     except Exception as e:  # noqa: BLE001
         print(f"[aicrew] ada: {e}")
         return json.dumps({"text": req["text"]})
+
+
+def clean_line(text, name, bank):
+    """the model's line as one plain spoken line, or the bank's when it's no good (empty, long, a number lost)"""
+    t = (text or "").strip().splitlines()[0].strip() if (text or "").strip() else ""
+    t = re.sub(r"^\**" + re.escape(name) + r"\**\s*:\s*", "", t, flags=re.I).strip().strip('"').strip()
+    if not t or len(t) > 160 or "{" in t or any(n not in t for n in re.findall(r"\d+", bank)):
+        return bank
+    return t
+
+
+def line(s):
+    """one of the crew's stock news lines (the line bank) said in that member's own words"""
+    req = json.loads(s)
+    bank, name = req.get("text") or "", req.get("name") or "crew"
+    try:
+        said = "\n".join("  " + t for t in _said[-12:]) or "  (nothing yet)"
+        system = (f"You voice {name}, one of the helper crew in a player's Factorio factory: {persona(req)}. "
+                  f"Say the news below as {name} would, out loud, in one short line (under 15 words): in character, "
+                  "fresh wording, the same facts (names, items, numbers), no emoji, no quotes. Never repeat or closely "
+                  f"echo these lines the crew said lately:\n{said}\nAnswer with the line only.")
+        text = chat(req.get("llm") or {}, [{"role": "system", "content": system},
+                                           {"role": "user", "content": f"({req.get('event', 'news')}) {bank}"}], 60)
+        out = clean_line(text, name, bank)
+        _note_said([{"text": out}])
+        return json.dumps({"text": out})
+    except Exception as e:  # noqa: BLE001 - the bank's line is said instead
+        print(f"[aicrew] line: {e}")
+        return json.dumps({"text": bank})
 
 
 def check(s):

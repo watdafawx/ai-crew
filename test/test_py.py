@@ -52,6 +52,18 @@ aicrew.banter(json.dumps({"context": {"crew": [{"name": "Zed", "manner": "laconi
 assert "Rook was killed" in seen[0] and "laconic and cool" in seen[0] and "Too quiet." in seen[0], seen[0]
 aicrew.chat = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
 assert json.loads(aicrew.banter("{}")) == {"replies": []}
+# a stock line in the member's own words: one plain line; the bank's when the model's is no good or it fails
+cl = aicrew.clean_line
+assert cl('Rook: "Biters again. Grabbing my wrench."\nmore', "Rook", "Biters.") == "Biters again. Grabbing my wrench."
+assert cl("**Rook**: Here.", "Rook", "Biters.") == "Here."
+assert cl("", "Rook", "Biters.") == "Biters." and cl("x" * 200, "Rook", "Biters.") == "Biters."
+assert cl("Make some gears?", "Juno", "Make 100 gears?") == "Make 100 gears?"  # (a number lost)
+assert json.loads(aicrew.line(json.dumps({"name": "Rook", "text": "Biters."}))) == {"text": "Biters."}  # (chat is down)
+seen = []
+aicrew.chat = lambda llm, msgs, max_tokens=500: seen.append(msgs) or "Bugs at the wall. Moving."
+a = json.loads(aicrew.line(json.dumps({"name": "Pip", "manner": "cheerful", "event": "alarm", "text": "Not the wall! Coming!"})))
+assert a == {"text": "Bugs at the wall. Moving."} and "cheerful" in seen[0][0]["content"] and "Not the wall" in seen[0][1]["content"], a
+aicrew.chat = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
 c = json.loads(aicrew.check(json.dumps({"llm": {"key": "gsk_abcdefghijklmnop"}})))
 assert c["provider"] == "groq" and c["key"] == "gsk_ab...mnop" and c["source"] == "mod settings" and not c["ok"], c
 c = json.loads(aicrew.check("{}"))

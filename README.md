@@ -152,7 +152,10 @@ with their own stock lines, and goes through all of them before one comes round 
 own (built 12, made 10 plates for the goal) is only a bubble over their head; news (a shortage, a nest, being hurt,
 the job you gave them done) goes to chat and is spoken, but only one voice every 3 seconds and one member's news
 aloud at most every 20 seconds; any line a member said in the last 5 minutes, or a teammate said in the last minute,
-is only a bubble. Answers to you are always spoken.
+is only a bubble. Answers to you are always spoken. The stock lines are in `lines.lua` (several per manner for each
+kind of news). With "Crew word their lines with the AI" on (the default; the window's gear, voices) and an AI that
+answers, a line about to be spoken goes to the AI first and is said in that member's own words, the same facts; one
+request per spoken line, and the stock line when the AI can't.
 When something happens (a crew member killed, a goal reached, research done) someone reacts, once a minute at most.
 They move like a player: a moment to take an order in before they set off, a short pause after each piece they
 build, upgrade or take down (longer for what takes longer to mine), turning to look at you when they talk and looking
@@ -195,7 +198,8 @@ Or set `OPENROUTER_API_KEY` (etc.) before starting the game. The Model setting o
 Voices: the crew speak in [Kokoro](https://github.com/thewh1teagle/kokoro-onnx)'s voices, run on your own computer
 (`uv pip install --system kokoro-onnx`), each member their own (British and American, men and women). Until Kokoro's
 model is there (below), or without it, edge-tts' online voices speak (`uv pip install --system edge-tts`), else
-Windows' built-in ones. Toggle crew voices, ADA, and "ADA words her lines with the AI" per player.
+Windows' built-in ones. Toggle crew voices, "Crew word their lines with the AI", ADA, and "ADA words her lines with
+the AI" per player.
 
 ADA's voice: Satisfactory's ADA is, by the community's ear, Google's WaveNet `en-US-Wavenet-C` with a multi-voice
 chorus and a doubled, slightly detuned echo. Here a neural voice (pick it in Settings; **Hear** plays a line) goes

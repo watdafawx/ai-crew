@@ -7,6 +7,7 @@ data:extend({
   { type = "string-setting", name = "ai-crew-model", setting_type = "runtime-per-user", default_value = "",
     allow_blank = true, order = "c" },
   { type = "bool-setting", name = "ai-crew-voices", setting_type = "runtime-per-user", default_value = true, order = "d" },
+  { type = "bool-setting", name = "ai-crew-lines-llm", setting_type = "runtime-per-user", default_value = true, order = "d2" },
   { type = "bool-setting", name = "ai-crew-ada", setting_type = "runtime-per-user", default_value = true, order = "e" },
   { type = "string-setting", name = "ai-crew-ada-voice", setting_type = "runtime-per-user", default_value = "heart",
     allowed_values = { "heart", "ava", "jenny", "aria", "emma", "michelle" }, order = "e2" },
