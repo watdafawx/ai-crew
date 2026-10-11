@@ -2410,10 +2410,10 @@ JOBS.defend = function(m, job)
   return false
 end
 
--- Trips of their own (fuel, what a need or the goal takes, fish, work round the base, a fight): where they stood when
+-- Trips (fuel, what a need or the goal takes, fish, work round the base, a fight, clearing nests): where they stood when
 -- they took it on is kept (m.trip_from), and once there is nothing more to do they go back there, so they're still
 -- about the base: walking, flying when far. Not when it's within 16 tiles, nor when they roam or follow you (that
--- brings them back). An order forgets the place. (Kept in think and alarm, gone back to from idle)
+-- brings them back). Other orders forget the place. (Kept in think, alarm and add_job, gone back to from idle)
 JOBS.back = function(m, job)
   job.t0 = job.t0 or game.tick
   if m.roam or m.follow and owner_char(m) or game.tick - job.t0 > 3600 then return true end -- (roaming, or following you: their own way)
@@ -2870,7 +2870,11 @@ local function parse(text)
 end
 
 local function add_job(m, job)
-  if not (job.kind == "remember" or job.kind == "need" or job.kind == "goal") then m.trip_from = nil end
+  if job.kind == "attack" then -- (clearing nests: a trip, back where it stood after)
+    m.trip_from = { x = m.entity.position.x, y = m.entity.position.y }
+  elseif not (job.kind == "remember" or job.kind == "need" or job.kind == "goal") then
+    m.trip_from = nil
+  end
   if job.kind == "stop" then
     for _, j in pairs(m.jobs) do if j.target and j.target.valid and j.target.unit_number then claims()[j.target.unit_number] = nil end end
     m.jobs, m.visits = {}, nil

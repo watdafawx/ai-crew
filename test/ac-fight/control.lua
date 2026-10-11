@@ -1,6 +1,6 @@
 -- Headless check: a chest with a submachine gun and magazines at home. Small biters walk up: the crew member arms
--- itself (armor, gun, ammo) and shoots them. Then "attack": it destroys a spawner and a worm 40 tiles out, falling back when hurt.
--- Then it dies, and is back a minute later.
+-- itself (armor, gun, ammo) and shoots them. Then "attack": it destroys a spawner and a worm 40 tiles out, falling back
+-- when hurt, and comes back. Then it dies, and is back a minute later.
 local out = {}
 local function log(s) out[#out + 1] = s helpers.write_file("ac-fight.txt", table.concat(out, "\n") .. "\n") end
 
@@ -40,9 +40,15 @@ script.on_nth_tick(600, function(ev)
     s.create_entity({ name = "biter-spawner", position = { 40, -10 }, force = "enemy" })
     s.create_entity({ name = "small-worm-turret", position = { 36, -16 }, force = "enemy" })
     remote.call("ai-crew", "order", nil, "Rook attack")
-    storage.phase = "attack"
+    storage.from, storage.phase = st.position, "attack"
   elseif storage.phase == "attack" and (nests == 0 or ev.tick >= 30000) then
     storage.cleared = nests == 0
+    storage.phase = "home"
+  elseif storage.phase == "home" then -- (back where it was sent from, then killed)
+    local d = st and math.sqrt((st.position.x - storage.from.x) ^ 2 + (st.position.y - storage.from.y) ^ 2) or 1e9
+    if d > 6 and ev.tick < 33600 then return end
+    storage.came_back = string.format("%.0f tiles from where it was sent from", d)
+    storage.home_ok = d <= 6
     storage.first_unit = st and st.unit
     local rook = st and s.find_entities_filtered({ type = "character", position = st.position, radius = 1 })[1]
     if rook then rook.die("enemy") end
@@ -52,6 +58,7 @@ script.on_nth_tick(600, function(ev)
     local checks = {
       { "armed itself and killed the biters that came", storage.killed_first },
       { "spawner and worm destroyed", storage.cleared },
+      { "came back after (" .. tostring(storage.came_back) .. ")", storage.home_ok },
       { "Rook back after dying, a new body", back ~= nil and back.unit ~= storage.first_unit },
     }
     local fails = 0

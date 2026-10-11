@@ -97,7 +97,7 @@ they go back to where they stood (more than 16 tiles away, and unless they roam 
 armor; a gun whose ammo is in stock, or can be made, before a longer-range one with none; that ammo in the slot
 beside it, topped up; makes the gun and its ammo when there are none) and shoots enemies in range while it works. Hurt, it eats raw fish
 if there is any; below half health it falls back to you and rejoins once healed. **Clear nests** (or "attack" in
-chat) sends them after the spawners and worms within 96 tiles of you. A crew member who dies is rebuilt at home a
+chat) sends them after the spawners and worms within 96 tiles of you, and back where they stood after. A crew member who dies is rebuilt at home a
 minute later, same name and settings, empty-handed (ADA announces both).
 
 **Defending the base.** When enemies hit any of your buildings (walls, turrets, machines), every armed fighter within
@@ -229,7 +229,7 @@ python test/run.py ac-trip 7300   headless game: no fuel: mine coal 60 tiles out
 python test/run.py ac-hint 18800   headless game: starved machines pointed out (once), research suggested after 5 idle minutes
 python test/run.py ac-jet 6100     headless game: a rock inside a closed ring of walls: fly in, mine it, fly out
 python test/run.py ac-roam 36010   headless game: roams round home, powers a dark assembler, finds and kills a worm
-python test/run.py ac-fight        headless game: arms up, kills biters, clears a spawner and a worm, respawns
+python test/run.py ac-fight        headless game: arms up, kills biters, clears a spawner and a worm, comes back, respawns
 python test/run.py ac-line 72010   headless game: a goal with a line (a stand-in bpgen places it): built, fed, emptied
 python test/run.py ac-power 144010 headless game: an engine goal with no assembler and no power: they build both
 python test/run.py ac-boot         headless game: from nothing, a furnace, plates, a ghost, gears, an engine
