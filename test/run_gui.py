@@ -7,7 +7,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 # fse: FSE_DIR, else an fse/ beside a folder above this one
 NATIVE = Path(os.environ.get("FSE_DIR") or next((d / "fse" for d in ROOT.parents if (d / "fse").exists()), ROOT / "fse"))
-from factorio_paths import run_dir  # noqa: E402
+from factorio_paths import run_dir, watch_game  # noqa: E402
 RUN = run_dir(HERE / "run")
 MODS, OUT = RUN / "gui-mods", RUN / "script-output"
 shutil.rmtree(MODS, ignore_errors=True)
@@ -24,7 +24,7 @@ save = RUN / (TEST + ".zip")
 save.unlink(missing_ok=True)
 launch = [str(NATIVE / "dist" / "fse-launcher.exe"), "--config", str(RUN / "config.ini"), "--mod-directory", str(MODS)]
 subprocess.run(launch + ["--create", str(save)], capture_output=True)
-game = subprocess.Popen(launch + ["--load-game", str(save)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+game = watch_game(launch + ["--load-game", str(save)])
 start = time.time()
 
 

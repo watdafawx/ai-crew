@@ -24,16 +24,21 @@ The crew window follows the theme each player picks in [FSE std](https://github.
 
 ## The window
 
-The crew button (top left) opens it: movable, and resizable with fse-std. The chat box on top (plain orders run
-as is, the rest goes to the AI), then tabs:
+The crew button (top left) opens it: movable, and resizable with fse-std, in each player's theme (`/fse-theme`). Its
+pages are tabs on its left edge, the orders for everyone hang below it, and the chat box sits at its bottom (plain
+orders run as is, the rest goes to the AI). The gear by the close button opens its settings. Untick **Docked** there to
+have it all inside the window; without fse-std it is.
 
-- **Crew**: whether AI chat works, each member's job with **Fight**, **Auto**, **Follow/Roam/Stay** (click to switch), **Stop**,
-  **Fire**; **Hire**; everyone: **Build**, **Clear**, **Upgrade**, **Deliver**, **Come**, **Roam**, **Stop**, **Clear nests**.
+- **Crew**: the crew and jobs queued, whether AI chat works, each member's job with **Fight**, **Auto**,
+  **Follow/Roam/Stay** (click to switch), **Stop**, **Fire** (asks first); **Hire**; everyone: **Build**, **Clear**,
+  **Upgrade**, **Deliver**, **Come**, **Roam**, **Stop**, **Clear nests**.
 - **Orders**: who (or anyone), an item and a count: **Get** (from chests or the network, else mined, crafted or made in
   a machine; brought to you), **Mine**, **Craft**.
-- **Goal**: an item, how many to have, optionally a **Production line** (bpgen) at a rate; what they're on.
-- **Settings**: AI provider, API key, model (**Save & test** checks it for real and shows the answer or the error),
-  voices, ADA, chatter. The same values as Settings > Mod settings > Per player.
+- **Goal**: an item, how many to have, optionally a **Production line** (bpgen) at a rate; how far it is (a bar), what
+  they're on.
+- **Settings** (the gear): AI provider, API key, model (**Save & test** checks it for real and shows the answer or the
+  error), ADA and the voices, what the crew do on their own; **Docked**, **Theme...**, **Reset size and place**. The same
+  values as Settings > Mod settings > Per player.
 
 **Hover card.** Point at a crew member and a card shows under the minimap (where the game shows what's under the
 cursor): name and manner, what they're doing, health, Fight and Auto (and the mode when busy), armor, gun, ammo, fish and
@@ -78,7 +83,9 @@ stone furnace for smelting) and set it up near you. An electric machine standing
 the nearest powered pole, or from a generator; with no power anywhere they build steam at the nearest water (offshore
 pump, boiler, steam engine, each trial-placed and kept only when its pipes connect, so modded ones work too). Boilers,
 furnaces and burner drills near you are kept fuelled whenever there's coal or wood about; with none in stock while
-they run dry, the crew go and get some (coal from the nearest patch, else wood), then fuel them. What they can't do: research
+they run dry, the crew go and get some (coal from the nearest patch, else wood), then fuel them. From a trip of their
+own like that (fuel, what a need or the goal takes, fishing, work round the base), once there's nothing more to do,
+they go back to where they stood (more than 16 tiles away, and unless they roam or follow you). What they can't do: research
 (they tell you what needs researching), fluids other than water to steam, and planning big layouts.
 - **Chat box**: plain orders ("get 50 iron ore", "craft 10 gears", "goal 200 iron gear wheel") run as is; anything
   else goes to the AI.
@@ -99,6 +106,7 @@ seconds, then goes back to its work. In a fight they shoot the most hurt biter i
 enemy), step back from a biter right on them and keep shooting, and eat a fish whenever 80 health is missing (sooner
 below half). With no fish left anywhere in reach they go fishing when there's a fish within 250 tiles: the nearest
 fish in the water, caught by hand, up to 20, for a minute at most (a fish they can't get to in 15 seconds they leave).
+Then they go back to where they stood (as from any trip of their own, above).
 
 **Cars and trains for long trips** (over 80 tiles). A train of yours standing at a stop within 24 tiles of them,
 whose schedule goes to a stop within 60 tiles of where they're headed: they get on, ride along (its schedule is left
@@ -170,7 +178,7 @@ reaches everyone through FSE's `native.sync`, so every peer applies the same rep
 Voices play on each computer for its own player's settings. A headless server needs no Python or key of its own.
 
 `aicrew.py` (on `FSE_PYPATH`) talks to any OpenAI-compatible API. Get a free key and paste it in the
-window's Settings tab (Save & test tells you at once whether it works); the provider is picked from it:
+window's settings (the gear by its close button; Save & test tells you at once whether it works); the provider is picked from it:
 
 | provider | key from | key starts |
 |---|---|---|
@@ -211,12 +219,13 @@ python test/run.py ac-upgrade 18010 headless game: upgrade marks done like a pla
 python test/run.py ac-arm 18010    headless game: no weapons anywhere: makes a submachine gun and magazines
 python test/run.py ac-arm2 36010   headless game: magazines but no shells: submachine guns, not shotguns; stray ammo fixed
 python test/run.py ac-human 8900   headless game: orders in normal chat; a hand's pace; looking round; trips to the chest; notes, keep out; offers
-python test/run.py ac-defend 9100  headless game: go fishing with no fish; rush (flying) to biters attacking a wall, kill them
+python test/run.py ac-defend 9100  headless game: go fishing with no fish, and come back; rush (flying) to biters attacking a wall, kill them
 python test/run.py ac-spam 7300    headless game: no gun, a shotgun short of wood: a few lines in 2 minutes, not a flood
 python test/run.py ac-car 12100    headless game: fuel a car, drive 120 tiles to a rock and back; no fuel: mine coal for a furnace
 python test/run.py ac-train 9100   headless game: ride a train to the far stop, mine there, get off a stalled train, walk home
 python test/run.py ac-belt 6100    headless game: across a field of running belts and back; standing on a belt, not carried off
 python test/run.py ac-bots 3610   headless game: crafts gears from plates on a belt; steps off a ghost for construction robots
+python test/run.py ac-trip 7300   headless game: no fuel: mine coal 60 tiles out, fuel a furnace at home, back where it stood
 python test/run.py ac-hint 18800   headless game: starved machines pointed out (once), research suggested after 5 idle minutes
 python test/run.py ac-jet 6100     headless game: a rock inside a closed ring of walls: fly in, mine it, fly out
 python test/run.py ac-roam 36010   headless game: roams round home, powers a dark assembler, finds and kills a worm

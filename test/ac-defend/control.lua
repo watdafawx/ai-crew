@@ -1,6 +1,6 @@
 -- Headless check of defending: guns and armor at home but no fish. Rook and Mara go fishing at the pond 30 tiles out
--- (fish caught by hand) first. Then biters attack a wall and a chest 70 tiles from home: the crew rush there (flying),
--- kill them all and the chest survives.
+-- (8 fish caught by hand: 20 each) first, and come back. Then biters attack a wall and a chest 70 tiles from home: the
+-- crew rush there (flying), kill them all and the chest survives.
 local out, checks = {}, {}
 local function log(s) out[#out + 1] = s helpers.write_file("ac-defend.txt", table.concat(out, "\n") .. "\n") end
 local function check(name, ok) checks[#checks + 1] = { name, ok and true or false } end
@@ -24,12 +24,16 @@ script.on_event(defines.events.on_tick, function(ev)
     game.map_settings.enemy_expansion.enabled = false
     for _, e in pairs(s.find_entities_filtered({ area = { { -150, -150 }, { 150, 150 } } })) do e.destroy() end
     for _, e in pairs(s.find_entities_filtered({ force = "enemy", area = { { -400, -400 }, { 400, 400 } } })) do e.destroy() end
+    -- (no fish but the pond's: they would go fishing wherever the map has some, too far out to come to the attack)
+    for _, e in pairs(s.find_entities_filtered({ type = "fish", area = { { -400, -400 }, { 400, 400 } } })) do e.destroy() end
     local tiles = {}
     for x = -150, 150 do for y = -100, 100 do
       tiles[#tiles + 1] = { name = (x >= 30 and x <= 40 and y >= -6 and y <= 6) and "water" or "lab-dark-1", position = { x, y } }
     end end
     s.set_tiles(tiles)
-    for _, p in ipairs({ { 33, -3 }, { 36, 0 }, { 34, 3 }, { 38, -2 } }) do s.create_entity({ name = "fish", position = p }) end
+    for _, p in ipairs({ { 33, -3 }, { 36, 0 }, { 34, 3 }, { 38, -2 }, { 32, 0 }, { 35, -5 }, { 37, 4 }, { 39, 1 } }) do
+      s.create_entity({ name = "fish", position = p })
+    end
     storage.chest = s.create_entity({ name = "iron-chest", position = { 0.5, 0.5 }, force = f })
     storage.chest.insert({ name = "submachine-gun", count = 2 })
     storage.chest.insert({ name = "firearm-magazine", count = 400 })
@@ -39,6 +43,12 @@ script.on_event(defines.events.on_tick, function(ev)
   elseif t == 3000 then
     log("fish at t=3000: " .. fish_count())
     check("went fishing with none to heal with (" .. fish_count() .. " fish)", fish_count() >= 10)
+    local far = 0
+    for i, name in ipairs(NAMES) do
+      local p = remote.call("ai-crew", "status", name).position
+      far = math.max(far, math.sqrt((p.x - 2 * i) ^ 2 + (p.y - 2) ^ 2))
+    end
+    check(string.format("back home after fishing (%.0f tiles out at most)", far), far < 8)
     for y = -6, 6 do s.create_entity({ name = "stone-wall", position = { -72.5, y + 0.5 }, force = f }) end
     storage.target = s.create_entity({ name = "iron-chest", position = { -69.5, 0.5 }, force = f })
     for i = 1, 8 do

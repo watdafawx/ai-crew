@@ -32,7 +32,9 @@ local steps = {
     tab(4)
     local w = game.get_player(1).gui.screen.aic_window
     local function find(el, name) if el.name == name then return el end for _, c in pairs(el.children) do local r = find(c, name) if r then return r end end end
-    find(w, "aic_set_key").text = "gsk_test0123456789abcd"
+    -- (the settings are behind the gear by the close button now: a panel of their own on the screen)
+    local menu = game.get_player(1).gui.screen.aic_window__menu
+    find(menu or w, "aic_set_key").text = "gsk_test0123456789abcd"
     remote.call("ai-crew", "press", 1, "set_save")
   end,
   [1200] = function() shot("ai") end, -- (after the AI test came back)
@@ -49,11 +51,32 @@ local steps = {
     p.selected = rook
   end,
   [1300] = function() shot("card") end,
-  [1310] = function()
+  -- the window's layout: its settings behind the gear, Docked off (all inside), Fire asking first
+  [1302] = function() game.get_player(1).selected = nil remote.call("ai-crew", "press", 1, "settings") end,
+  [1330] = function() shot("settings") end,
+  [1332] = function()
+    local screen = game.get_player(1).gui.screen
+    if screen.aic_window__menu then screen.aic_window__menu.destroy() end
+    remote.call("ai-crew", "docked", 1, false)
+  end,
+  [1360] = function() shot("inside") end,
+  [1362] = function()
+    remote.call("ai-crew", "docked", 1, true)
+    -- (as the player's press: a question first)
+    local w = game.get_player(1).gui.screen.aic_window
+    local function find(el) if el.tags and el.tags.aic == "fire" then return el end for _, c in pairs(el.children) do local r = find(c) if r then return r end end end
+    local b = find(w)
+    if b then remote.call("ai-crew", "press", 1, "fire", b.tags.who, true) end
+  end,
+  [1390] = function() shot("fire") end,
+  [1400] = function()
     local key = game.get_player(1).mod_settings["ai-crew-api-key"].value
     local a = remote.call("ai-crew", "ai_status", 1) or {}
     helpers.write_file("ac-gui-result.txt", string.format("key saved: %s | provider from it: %s | key shown: %s | error: %s",
       tostring(key == "gsk_test0123456789abcd"), tostring(a.provider), tostring(a.key), tostring(a.error))
+      .. " | layout: rail " .. tostring(game.get_player(1).gui.screen.aic_window__left ~= nil) .. ", dock "
+      .. tostring(game.get_player(1).gui.screen.aic_window__bottom ~= nil) .. ", fire asks "
+      .. tostring(game.get_player(1).gui.screen.fstd_confirm_aic_fire ~= nil)
       .. " | hover: " .. (game.get_player(1).gui.screen.aic_card and "card"
         or native and (native.call("entityinfo", "status", "") or ""):find('"shown":[1-9]') and "rows in the game's panel" or "nothing"))
     helpers.write_file("ac-gui-done.txt", "done")

@@ -910,7 +910,7 @@ local JOBS = {}
 local low_burners -- (defined with the fuel helpers)
 local DOING_WORD = { drive = "driving", defend = "defending the base", fish = "fishing", build = "building", deconstruct = "clearing", mine = "mining", craft = "crafting",
   fetch = "fetching", deliver = "delivering", smelt = "making", place = "placing", tend = "refuelling",
-  feed = "feeding", collect = "collecting", attack = "attacking nests", upgrade = "upgrading" }
+  feed = "feeding", back = "heading back", collect = "collecting", attack = "attacking nests", upgrade = "upgrading" }
 
 local function claims()
   storage.claims = storage.claims or {}
@@ -2404,6 +2404,17 @@ JOBS.defend = function(m, job)
   return false
 end
 
+-- Trips of their own (fuel, what a need or the goal takes, fish, work round the base): where they stood when they took
+-- it on is kept (m.trip_from), and once there is nothing more to do they go back there, so they're still about the
+-- base: walking, flying when far. Not when it's within 16 tiles, nor when they roam or follow you (that brings them
+-- back). An order forgets the place. (Kept in think, gone back to from idle)
+JOBS.back = function(m, job)
+  job.t0 = job.t0 or game.tick
+  if m.roam or m.follow and owner_char(m) or game.tick - job.t0 > 3600 then return true end -- (roaming, or following you: their own way)
+  if dist2(m.entity.position, job.at) > 24 * 24 and fly(m, job.at) then return false end
+  return go(m, job.at, 2)
+end
+
 -- raw fish from the water, caught by hand (5 a fish) when the crew have none left to heal with
 JOBS.fish = function(m, job)
   local e = m.entity
@@ -2490,6 +2501,10 @@ local function goal_step(m)
   local g, is_need = list[1], true
   if not g then g, is_need = goals()[key], false end
   if not g then return end
+  if is_need and g.after and g.after.kind == "tend" and #low_burners(m, 1) == 0 then -- (the burners it was for are gone or fed)
+    table.remove(list, 1)
+    return
+  end
   local have = goal_have(m.owner, g.item)
   g.count = g.count or (have + g.more)
   if have >= g.count then
@@ -2687,6 +2702,12 @@ local function idle(m)
       end
     end
     if goal_step(m) then return end
+    local at = m.trip_from -- (nothing more to do: back from a trip)
+    m.trip_from = nil
+    if at and not (m.roam or m.follow and owner_char(m)) and dist2(m.entity.position, at) > 16 * 16 then
+      m.jobs[1] = { kind = "back", at = at }
+      return
+    end
   end
   if not m.move and game.tick >= (m.glance_at or 0) then -- standing about: look round now and then, mostly at you
     m.glance_at = game.tick + math.random(240, 600)
@@ -2715,7 +2736,12 @@ local function think(m)
     return
   end
   local job = m.jobs[1]
-  if not job then return idle(m) end
+  if not job then
+    idle(m)
+    local j = m.jobs[1]
+    if j and (j.auto or j.goal) and not m.trip_from then m.trip_from = { x = m.entity.position.x, y = m.entity.position.y } end
+    return
+  end
   if job.kind ~= "mine" and m.mining then stop_mining(m) end
   local ok, done = pcall(JOBS[job.kind], m, job)
   if not ok then
@@ -2838,6 +2864,7 @@ local function parse(text)
 end
 
 local function add_job(m, job)
+  if not (job.kind == "remember" or job.kind == "need" or job.kind == "goal") then m.trip_from = nil end
   if job.kind == "stop" then
     for _, j in pairs(m.jobs) do if j.target and j.target.valid and j.target.unit_number then claims()[j.target.unit_number] = nil end end
     m.jobs, m.visits = {}, nil
@@ -3474,8 +3501,8 @@ TOGGLES = {
 local function ai_short(player)
   local a = ai_state()[player.index]
   if not py() then return "[color=0.7,0.7,0.7]AI chat off (no fse loader)[/color]" end
-  if not a then return "[color=0.7,0.7,0.7]AI chat not tested (Settings tab)[/color]" end
-  return a.ok and ("[color=0.4,1,0.4]AI chat: " .. tostring(a.provider) .. "[/color]") or "[color=1,0.4,0.4]AI chat not working (Settings tab)[/color]"
+  if not a then return "[color=0.7,0.7,0.7]AI chat not tested (settings: the gear by the close button)[/color]" end
+  return a.ok and ("[color=0.4,1,0.4]AI chat: " .. tostring(a.provider) .. "[/color]") or "[color=1,0.4,0.4]AI chat not working (settings: the gear by the close button)[/color]"
 end
 
 local function check_ai(player)
@@ -3508,12 +3535,21 @@ local function find_el(root, name)
     local r = find_el(c, name)
     if r then return r end
   end
+  if root.name == WIN then  -- (and in the frames stuck to the window: its rail, dock, settings)
+    for _, c in pairs(game.get_player(root.player_index).gui.screen.children) do
+      local a = c.tags.fstd_attach
+      if a and a.owner == WIN and c.get_mod() == script.mod_name then
+        local r = find_el(c, name)
+        if r then return r end
+      end
+    end
+  end
 end
 
 local function new_window(player)
   if fstd then
-    return fstd.create(player, { name = WIN, title = "AI Crew", width = 640, height = 470, min_width = 520, min_height = 300,
-      themed = theme ~= nil })
+    return fstd.create(player, { name = WIN, title = "AI Crew", width = 640, height = 470, min_width = 520, min_height = 320,
+      themed = theme ~= nil, settings = theme ~= nil and theme.menu ~= nil })
   end
   local screen = player.gui.screen
   if screen[WIN] then screen[WIN].destroy() end
@@ -3548,36 +3584,60 @@ local function note(parent, text, name)
   return l
 end
 
+-- The window as bpgen's (fse/README.md, "A window's layout"): the pages (Crew, Orders, Goal) on a rail out of the
+-- window's left edge, the crew-wide orders on a dock below it, the chat box pinned at the bottom, the settings behind
+-- the gear by the close button. "Docked" off in the gear's panel, or without fse-std's layouts: all inside.
 local function build_panel(player)
+  for _, a in pairs(player.gui.screen.children) do  -- (the rail and dock it had: made again below, or not at all)
+    local t = a.tags.fstd_attach
+    if t and t.owner == WIN and a.name ~= WIN .. "__menu" and a.get_mod() == script.mod_name then a.destroy() end
+  end
   local frame, c = new_window(player)
   local st = ui(player)
   local members = members_of(player.index)
-  if #members > 0 then -- the chat box, always in sight
-    local r = row(c)
-    r.style.bottom_margin = 6
-    local chat = r.add({ type = "textfield", name = "aic_chat",
-      tooltip = "Talk to the crew (to whoever the Orders tab picks). Plain orders run as is; the rest goes to the AI. Enter sends." })
-    chat.style.horizontally_stretchable = true
-    chat.style.maximal_width = 1000
-    btn(r, "Send", "send", nil, "Enter also sends", 60)
+  local docked = theme ~= nil and theme.dock ~= nil and not st.inside
+  local pages = { "Crew", "Orders", "Goal" }
+  st.tab = math.min(st.tab or 1, #pages)  -- (the Settings page went behind the gear)
+  local sel
+  if docked then
+    local rail = theme.attach(frame, "left", { size = { 112, #pages * 34 + 8 }, along = 40, overlap = 6, role = "inset",
+      direction = "vertical", padding = 4 })
+    sel = rail.add({ type = "flow", name = "aic_tabs", direction = "vertical" })
+    sel.style.vertical_spacing = 4
+  else
+    sel = c.add({ type = "flow", name = "aic_tabs", direction = "horizontal" })
+    sel.style.horizontal_spacing = 4
+    sel.style.bottom_margin = 6
   end
-  local tabs = c.add({ type = "tabbed-pane", name = "aic_tabs" })
-  tabs.style.horizontally_stretchable = true
-  tabs.style.vertically_stretchable = true
-  local function tab(caption)
-    local t = tabs.add({ type = "tab", caption = caption })
-    local scroll = tabs.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto" })
-    scroll.style.vertically_stretchable = true
-    scroll.style.horizontally_stretchable = true
-    tabs.add_tab(t, scroll)
-    local body = scroll.add({ type = "flow", direction = "vertical" })
+  for i, n in ipairs(pages) do
+    local b = sel.add({ type = "button", caption = n, toggled = i == st.tab, tags = { aic = "tab", who = i } })
+    if theme then
+      theme.apply(b, docked and "rtab" or "tab", docked and { width = 104, height = 30 } or { minimal_width = 80, height = 30 })
+    else
+      b.style.minimal_width = 80
+    end
+  end
+  local scroll = c.add({ type = "scroll-pane", name = "aic_pages", horizontal_scroll_policy = "never",
+    vertical_scroll_policy = "auto" })
+  scroll.style.vertically_stretchable = true
+  scroll.style.horizontally_stretchable = true
+  local function page(i)
+    local body = scroll.add({ type = "flow", direction = "vertical", visible = i == st.tab })
     body.style.vertical_spacing = 8
     body.style.horizontally_stretchable = true
     return body
   end
 
-  -- Crew
-  local crew_tab = tab("Crew")
+  -- Crew: a few numbers, a row each (Fire asks first), hiring; the orders for everyone (on the dock when docked)
+  local crew_tab = page(1)
+  local top = row(crew_tab)
+  if theme then
+    local jobs_n = 0
+    for _, m in pairs(members) do jobs_n = jobs_n + #m.jobs end
+    local fixed = { horizontally_stretchable = false, minimal_width = 110 }
+    theme.apply(theme.stat(top, #members .. " / " .. MAX_CREW, "crew"), "stat", fixed)
+    theme.apply(theme.stat(top, tostring(jobs_n), "jobs queued"), "stat", fixed)
+  end
   note(crew_tab, ai_short(player), "aic_ai_short")
   local t = crew_tab.add({ type = "table", name = "aic_crew", column_count = 7 })
   t.style.vertical_align = "center"
@@ -3602,23 +3662,35 @@ local function build_panel(player)
   btn(r, "Hire", "hire", nil, "Up to " .. MAX_CREW, 64).enabled = #members < MAX_CREW
   r.add({ type = "textfield", name = "aic_name", tooltip = "Name (optional)" }).style.width = 120
   if #members > 0 then
-    crew_tab.add({ type = "line" })
-    r = row(crew_tab)
-    r.add({ type = "label", caption = "Everyone:" })
-    btn(r, "Build", "build", nil, "Place the ghosts near you now (making what's missing)", 64)
-    btn(r, "Clear", "deconstruct", nil, "Remove what's marked for deconstruction near you", 64)
-    btn(r, "Upgrade", "upgrade", nil, "Carry out the upgrade planner's marks near you (making the new pieces); recipes and contents kept", 76)
-    btn(r, "Deliver", "deliver", nil, "Bring you everything they carry", 72)
-    r = row(crew_tab)
-    r.add({ type = "label", caption = "Everyone:" }).style.font_color = { 0, 0, 0, 0 } -- (lines up with the row above)
-    btn(r, "Come", "follow", nil, "Follow you", 64)
-    btn(r, "Roam", "roam", nil, "Wander round you on their own, dealing with what they find", 64)
-    btn(r, "Stop", "stop", nil, "Drop all jobs", 56)
-    btn(r, "Clear nests", "attack", nil, "Destroy the enemy spawners and worms within 96 tiles of you", 100)
+    local function everyone(parent, label)
+      local e = row(parent)
+      if label then e.add({ type = "label", caption = "Everyone:" }) end
+      btn(e, "Build", "build", nil, "Place the ghosts near you now (making what's missing)", 64)
+      btn(e, "Clear", "deconstruct", nil, "Remove what's marked for deconstruction near you", 64)
+      btn(e, "Upgrade", "upgrade", nil, "Carry out the upgrade planner's marks near you (making the new pieces); recipes and contents kept", 76)
+      btn(e, "Deliver", "deliver", nil, "Bring you everything they carry", 72)
+      if label then
+        e = row(parent)
+        e.add({ type = "label", caption = "Everyone:" }).style.font_color = { 0, 0, 0, 0 } -- (lines up with the row above)
+      end
+      btn(e, "Come", "follow", nil, "Follow you", 64)
+      btn(e, "Roam", "roam", nil, "Wander round you on their own, dealing with what they find", 64)
+      btn(e, "Stop", "stop", nil, "Drop all jobs", 56)
+      btn(e, "Clear nests", "attack", nil, "Destroy the enemy spawners and worms within 96 tiles of you", 100)
+    end
+    if docked then  -- (a toolbar hanging below the window: orders for everyone, whichever page is open)
+      local d = theme.dock(frame, { size = { 660, 44 } })
+      local e = d.add({ type = "flow", direction = "horizontal" })
+      e.style.horizontally_stretchable, e.style.horizontal_align = true, "center"
+      everyone(e, false)
+    else
+      crew_tab.add({ type = "line" })
+      everyone(crew_tab, true)
+    end
   end
 
   -- Orders
-  local orders = tab("Orders")
+  local orders = page(2)
   local names = { "Anyone" }
   for _, m in pairs(members) do names[#names + 1] = m.name end
   st.who = math.min(st.who or 1, #names)
@@ -3630,10 +3702,10 @@ local function build_panel(player)
   btn(r, "Get", "get", nil, "From chests or the network if there; else mined, crafted or made in a machine; brought to you", 56)
   btn(r, "Mine", "mine", nil, "Mine it by hand (ore, stone, coal, wood...)", 56)
   btn(r, "Craft", "craft", nil, "Hand-craft it", 60)
-  note(orders, "Get works for anything: what isn't around they mine, craft or make in a machine (building the machine and its power if need be). Or type it in the box above: \"get 50 iron plate\", \"craft 10 gears\", \"attack\".")
+  note(orders, "Get works for anything: what isn't around they mine, craft or make in a machine (building the machine and its power if need be). Or type it in the box below: \"get 50 iron plate\", \"craft 10 gears\", \"attack\".")
 
-  -- Goal
-  local goal = tab("Goal")
+  -- Goal: what to have, how far it is (a bar red to green), what they're working for
+  local goal = page(3)
   r = row(goal)
   r.add({ type = "choose-elem-button", name = "aic_goal_item", elem_type = "item", item = st.goal_item,
     tooltip = "What to have: the crew work towards it whenever there's nothing to build or clear" })
@@ -3648,48 +3720,31 @@ local function build_panel(player)
   r.add({ type = "label", caption = "/min" })
   btn(r, "Set", "goal_set", nil, "Start on it", 56)
   btn(r, "Clear", "goal_clear", nil, "Drop the goal and what they're working for", 60)
+  local g = storage.goals and storage.goals[player.index]
+  if theme and g then
+    local have = goal_have(player.index, g.item)
+    theme.progress(goal, math.min(1, have / math.max(1, g.count)), { caption = pretty(g.item), auto = true,
+      text = have .. " / " .. g.count }).name = "aic_goal_bar"
+  end
   note(goal, goal_text(player.index), "aic_goal_status")
 
-  -- Settings (the mod's per-player settings, written here)
-  local ai = tab("Settings")
-  local set = ai.add({ type = "table", column_count = 2 })
-  set.style.vertical_align = "center"
-  set.style.horizontal_spacing = 12
-  set.style.vertical_spacing = 6
-  set.add({ type = "label", caption = "AI provider" })
-  local cur = player_setting(player, "ai-crew-provider") or "auto"
-  local sel = 1
-  for i, v in ipairs(PROVIDER_CHOICES) do if v == cur then sel = i end end
-  set.add({ type = "drop-down", name = "aic_set_provider", items = PROVIDER_CHOICES, selected_index = sel,
-    tooltip = "auto: picked from the key (sk-or- OpenRouter, gsk_ Groq, AIza Gemini, csk- Cerebras, sk_ Pollinations). off: plain orders only." })
-  set.add({ type = "label", caption = "API key" })
-  local key = set.add({ type = "textfield", name = "aic_set_key", text = player_setting(player, "ai-crew-api-key") or "",
-    tooltip = "Free keys: openrouter.ai/keys, console.groq.com/keys, aistudio.google.com/apikey, cloud.cerebras.ai. Saved in your mod settings." })
-  key.style.width = 360
-  key.is_password = true
-  set.add({ type = "label", caption = "Model" })
-  local model = set.add({ type = "textfield", name = "aic_set_model", text = player_setting(player, "ai-crew-model") or "",
-    tooltip = "Blank: picked for you (on OpenRouter, a current free model)" })
-  model.style.width = 360
-  r = row(ai)
-  btn(r, "Save & test", "set_save", nil, "Save the provider, key and model, then ask the AI one short question", 110).enabled = py()
-  btn(r, "Test", "ai_test", nil, "Ask the AI one short question now", 64).enabled = py()
-  for i, line in ipairs(ai_lines(player)) do note(ai, line, "aic_ai_" .. i) end
-  ai.add({ type = "line" })
-  r = row(ai)
-  r.add({ type = "label", caption = "ADA voice" })
-  local cur_v = player_setting(player, "ai-crew-ada-voice") or "heart"
-  local vi = 1
-  for i, v in ipairs(ADA_VOICES) do if v == cur_v then vi = i end end
-  r.add({ type = "drop-down", name = "aic_set_ada_voice", items = ADA_VOICES, selected_index = vi,
-    tooltip = "A neural voice under ADA's effects (chorus and a detuned echo). Needs edge-tts; the effects need ffmpeg." })
-  btn(r, "Hear", "ada_hear", nil, "ADA says a line in this voice", 60).enabled = py()
-  for _, c in ipairs(TOGGLES) do
-    ai.add({ type = "checkbox", name = "aic_set_" .. c[1], caption = c[2], state = player_setting(player, "ai-crew-" .. c[1]) and true or false,
-      tooltip = c[3] })
+  -- the chat box, pinned under the pages: always in sight
+  if #members > 0 then
+    local cr = row(c)
+    cr.style.top_margin = 6
+    local chat = cr.add({ type = "textfield", name = "aic_chat",
+      tooltip = "Talk to the crew (to whoever the Orders page picks). Plain orders run as is; the rest goes to the AI. Enter sends." })
+    chat.style.horizontally_stretchable = true
+    chat.style.maximal_width = 1000
+    local send = btn(cr, "Send", "send", nil, "Enter also sends", 90)
+    if theme then theme.apply(send, "ok", { width = 90, minimal_width = 0 }) end
   end
-  tabs.selected_tab_index = math.min(st.tab or 1, 4)
-  if theme then theme.adopt(frame) end
+  if theme then
+    theme.adopt(frame)
+    for _, a in pairs(player.gui.screen.children) do
+      if a.tags.fstd_attach and a.tags.fstd_attach.owner == WIN and a.get_mod() == script.mod_name then theme.adopt(a) end
+    end
+  end
 
   if py() and not ai_state()[player.index] then check_ai(player) end
 end
@@ -3709,6 +3764,11 @@ local function refresh(player)
   end
   local g = find_el(f, "aic_goal_status")
   if g then g.caption = goal_text(player.index) end
+  local gb, goal = find_el(f, "aic_goal_bar"), storage.goals and storage.goals[player.index]
+  if gb and goal and theme then
+    local have = goal_have(player.index, goal.item)
+    theme.set_progress(gb, math.min(1, have / math.max(1, goal.count)), have .. " / " .. goal.count)
+  end
   local s = find_el(f, "aic_ai_short")
   if s then s.caption = ai_short(player) end
   local lines = ai_lines(player)
@@ -3716,7 +3776,7 @@ local function refresh(player)
     local l = find_el(f, "aic_ai_" .. i)
     if l then l.caption = lines[i] or "" end
   end
-  if #lines > 0 and not find_el(f, "aic_ai_" .. #lines) then return build_panel(player) end
+  -- (the AI's lines are in the settings: all of them shown again when those are opened)
 end
 
 -- the drop-down's pick: a member's name, or "crew" for anyone
@@ -3726,12 +3786,87 @@ local function who_of(f)
   return i > 1 and dd.items[i] or "crew"
 end
 
-local function act(player, action, who)
+local function act(player, action, who, scripted)
   local f = open_frame(player)
   local st = ui(player)
+  local function tell(text)  -- (a toast with the theme library, else the chat)
+    if theme and theme.toast then theme.toast(player, text) else player.print(text) end
+  end
   if action == "close" then
+    for _, c in pairs(player.gui.screen.children) do
+      if c.tags.fstd_attach and c.tags.fstd_attach.owner == WIN and c.get_mod() == script.mod_name then c.destroy() end
+    end
     if f then f.destroy() end
     return
+  elseif action == "tab" then
+    st.tab = who
+  elseif action == "theme" then
+    local menu = player.gui.screen[WIN .. "__menu"]
+    if menu then menu.destroy() end
+    return remote.call("fse-std", "open_theme", player.index)
+  elseif action == "reset_size" then
+    if storage.fstd_windows and storage.fstd_windows[player.index] then storage.fstd_windows[player.index][WIN] = nil end
+    st.loc = nil
+  elseif action == "settings" then
+    -- the window's settings, behind the gear by its close button (fse-std's theme.menu): the AI (provider, key,
+    -- model, its test), ADA and the voices, what the crew do on their own, and the window's own (docked, theme, size)
+    local m = f and theme and theme.menu and theme.menu(f, { size = { 460, 470 } })
+    if not m then return end
+    local head = row(m)
+    head.add({ type = "label", caption = "AI Crew" }).style.font = "default-bold"
+    head.add({ type = "empty-widget" }).style.horizontally_stretchable = true
+    if theme.dock then
+      head.add({ type = "checkbox", name = "aic_docked", caption = "Docked", state = not ui(player).inside,
+        tooltip = "The pages on the window's left edge and the orders for everyone below it; unticked, all inside it" })
+    end
+    local scroll = m.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto" })
+    scroll.style.vertically_stretchable, scroll.style.horizontally_stretchable = true, true
+    local ai = theme.fold(scroll, "AI chat", true)
+    local set = ai.add({ type = "table", column_count = 2 })
+    set.style.vertical_align = "center"
+    set.style.horizontal_spacing = 12
+    set.style.vertical_spacing = 6
+    set.add({ type = "label", caption = "Provider" })
+    local cur = player_setting(player, "ai-crew-provider") or "auto"
+    local sel = 1
+    for i, v in ipairs(PROVIDER_CHOICES) do if v == cur then sel = i end end
+    set.add({ type = "drop-down", name = "aic_set_provider", items = PROVIDER_CHOICES, selected_index = sel,
+      tooltip = "auto: picked from the key (sk-or- OpenRouter, gsk_ Groq, AIza Gemini, csk- Cerebras, sk_ Pollinations). off: plain orders only." })
+    set.add({ type = "label", caption = "API key" })
+    local key = set.add({ type = "textfield", name = "aic_set_key", text = player_setting(player, "ai-crew-api-key") or "",
+      tooltip = "Free keys: openrouter.ai/keys, console.groq.com/keys, aistudio.google.com/apikey, cloud.cerebras.ai. Saved in your mod settings." })
+    key.style.width = 300
+    key.is_password = true
+    set.add({ type = "label", caption = "Model" })
+    set.add({ type = "textfield", name = "aic_set_model", text = player_setting(player, "ai-crew-model") or "",
+      tooltip = "Blank: picked for you (on OpenRouter, a current free model)" }).style.width = 300
+    local r = row(ai)
+    btn(r, "Save & test", "set_save", nil, "Save the provider, key and model, then ask the AI one short question", 110).enabled = py()
+    btn(r, "Test", "ai_test", nil, "Ask the AI one short question now", 64).enabled = py()
+    for i, line in ipairs(ai_lines(player)) do note(ai, line, "aic_ai_" .. i).style.maximal_width = 400 end
+    local voice = theme.fold(scroll, "ADA and voices", false)
+    r = row(voice)
+    r.add({ type = "label", caption = "ADA voice" })
+    local cur_v = player_setting(player, "ai-crew-ada-voice") or "heart"
+    local vi = 1
+    for i, v in ipairs(ADA_VOICES) do if v == cur_v then vi = i end end
+    r.add({ type = "drop-down", name = "aic_set_ada_voice", items = ADA_VOICES, selected_index = vi,
+      tooltip = "A neural voice under ADA's effects (chorus and a detuned echo). Needs edge-tts; the effects need ffmpeg." })
+    btn(r, "Hear", "ada_hear", nil, "ADA says a line in this voice", 60).enabled = py()
+    local own = theme.fold(scroll, "What the crew do", false)
+    for i, c in ipairs(TOGGLES) do
+      local parent = (c[1] == "voices" or c[1] == "ada" or c[1] == "ada-llm") and voice or own
+      parent.add({ type = "checkbox", name = "aic_set_" .. c[1], caption = c[2], state = player_setting(player, "ai-crew-" .. c[1]) and true or false,
+        tooltip = c[3] })
+    end
+    r = row(m)
+    if remote.interfaces["fse-std"] and remote.interfaces["fse-std"].open_theme then
+      btn(r, "Theme...", "theme", nil, "How every window using fse-std looks to you (/fse-theme)", 100)
+    end
+    btn(r, "Reset size and place", "reset_size", nil, "The window back to its first size, in the middle of the screen", 170)
+    theme.adopt(m)
+    return
+
   elseif action == "set_save" then
     local function val(name) local e = f and find_el(f, name) return e and e.text end
     local dd = f and find_el(f, "aic_set_provider")
@@ -3753,15 +3888,20 @@ local function act(player, action, who)
     local name = f and find_el(f, "aic_name")
     order(player.index, "crew hire " .. (name and name.text:match("^%s*(%S+)") or ""))
   elseif action == "fire" then
+    if theme and theme.confirm and not scripted then  -- (asks first: the answer comes to theme.on_confirm, below)
+      return theme.confirm(player, { name = "aic_fire", title = "Fire " .. tostring(who) .. "?",
+        text = tostring(who) .. " leaves the crew and hands over what they carry.", yes = "Fire", no = "Keep",
+        data = { who = who } })
+    end
     order(player.index, "crew fire " .. who)
   elseif action == "mode" then -- follow, roam, stay, follow...
     local m = find_member(who, player.index)
     if m then order(player.index, m.name .. " " .. (m.roam and "stay" or m.follow and "roam" or "follow")) end
   elseif action == "get" or action == "mine" or action == "craft" then
-    if not st.item then return player.print("Pick an item first.") end
+    if not st.item then return tell("Pick an item first.") end
     order(player.index, who_of(f) .. " " .. action .. " " .. (tonumber(st.count) or 50) .. " " .. st.item)
   elseif action == "goal_set" then
-    if not st.goal_item then return player.print("Pick the goal's item first.") end
+    if not st.goal_item then return tell("Pick the goal's item first.") end
     order(player.index, "crew goal " .. (tonumber(st.goal_count) or 100) .. " " .. st.goal_item)
     local g = storage.goals and storage.goals[player.index]
     local bp = remote.interfaces["bpgen"]
@@ -3932,7 +4072,9 @@ script.on_event(defines.events.on_gui_click, function(ev)
   local el, player = ev.element, game.get_player(ev.player_index)
   if not (el.valid and player) then return end
   if el.name == "aic_toggle" then
-    if open_frame(player) then open_frame(player).destroy() else build_panel(player) end
+    if open_frame(player) then act(player, "close") else build_panel(player) end
+  elseif el.tags and el.tags.fstd_settings == WIN then
+    act(player, "settings")
   elseif el.tags and el.tags.aic and (el.type == "button" or el.type == "sprite-button") then
     act(player, el.tags.aic, el.tags.who)
   end
@@ -3941,6 +4083,11 @@ end)
 script.on_event(defines.events.on_gui_checked_state_changed, function(ev)
   local el = ev.element
   if el.name == "aic_goal_line" then ui(game.get_player(ev.player_index)).goal_line = el.state return end
+  if el.name == "aic_docked" then
+    local player = game.get_player(ev.player_index)
+    ui(player).inside = (not el.state) or nil
+    return build_panel(player)
+  end
   local setting = el.name:match("^aic_set_(.+)$")
   if setting then
     game.get_player(ev.player_index).mod_settings["ai-crew-" .. setting] = { value = el.state }
@@ -4333,7 +4480,8 @@ remote.add_interface("ai-crew", {
   -- (tests) path answers held back n ticks, as a busy pathfinder would
   test_path_delay = function(n) storage.path_delay = n end,
   -- (tests) a button of the window pressed
-  press = function(player_index, action) act(game.get_player(player_index), action) end,
+  -- (tests) a button's action; as_player: as the player's own click (Fire asks first)
+  press = function(player_index, action, who, as_player) act(game.get_player(player_index), action, who, not as_player) end,
   ai_status = function(player_index) return ai_state()[player_index] end,
   -- what the crew remember lately (the AI gets it): {tick, text}, oldest first
   memory = function(owner) return storage.events and storage.events[owner or 0] end,
@@ -4343,11 +4491,18 @@ remote.add_interface("ai-crew", {
   goal = function(owner) return storage.goals and storage.goals[owner or 0] end,
   -- (tests) a hint now (the 5-minute gap skipped); its key
   hint = function(owner) return hint(owner, true) end,
+  -- (tests) "Docked" (the window's settings) on or off
+  docked = function(player_index, on)
+    local player = game.get_player(player_index)
+    ui(player).inside = (not on) or nil
+    build_panel(player)
+  end,
   -- (tests) the window opened on a tab
   panel = function(player_index, tab)
     local player = game.get_player(player_index)
     ui(player).tab = tab or 1
     build_panel(player)
+    if tab == 4 then act(player, "settings") end  -- (the settings: behind the gear by the close button)
   end,
   -- bpgen's answer to plan_line: its ghosts are placed (the crew build them), or why not (they make it by hand)
   line_placed = function(owner, item, ghosts, err, abs)
@@ -4380,4 +4535,11 @@ remote.add_interface("ai-crew", {
 if fstd then
   require("__fse-std__/safe").chain("ai-crew", { require("__fse-std__/input").handlers, fstd.handlers,
     theme and theme.handlers or {} })
+  if theme and theme.on_confirm then  -- (Fire, after its question)
+    theme.on_confirm(function(player, name, yes, data)
+      if name ~= "aic_fire" or not (yes and data and data.who) then return end
+      order(player.index, "crew fire " .. data.who)
+      if open_frame(player) then build_panel(player) end
+    end)
+  end
 end

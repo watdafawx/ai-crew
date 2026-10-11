@@ -74,7 +74,10 @@ local steps = {
     hear("crew keep out of my stuff")
     game.forces.player.recipes["wooden-chest"].enabled = false -- (only the chest has any: none made from wood)
     for _, n in ipairs({ "Rook", "Mara" }) do
-      game.surfaces.nauvis.find_entities_filtered({ type = "character", position = st(n).position, radius = 0.3 })[1].get_main_inventory().clear()
+      local inv = game.surfaces.nauvis.find_entities_filtered({ type = "character", position = st(n).position, radius = 0.3 })[1]
+        .get_main_inventory()
+      inv.clear()
+      inv.insert({ name = "raw-fish", count = 10 }) -- (the chest's are kept out of now: no fishing trip)
     end
     storage.wood = storage.chest.get_item_count("wooden-chest")
     storage.ghost = game.surfaces.nauvis.create_entity({ name = "entity-ghost", inner_name = "wooden-chest", position = { 20, -25 },
@@ -116,7 +119,11 @@ local LAST = 8800
 
 script.on_event(defines.events.script_raised_revive, function(ev)
   if storage.revived and ev.entity.name == "wooden-chest" then table.insert(storage.revived, ev.tick) end
-  if ev.entity.name == "stone-furnace" then storage.furnace_at = ev.tick end
+  if ev.entity.name == "stone-furnace" then
+    storage.furnace_at = ev.tick
+    ev.entity.get_fuel_inventory().insert({ name = "coal", count = 10 }) -- (unfuelled, it would send them off for coal,
+    -- wherever the map has some: a trip that outlasts the furnace and holds up what comes after)
+  end
 end)
 
 script.on_event(defines.events.on_tick, function(ev)

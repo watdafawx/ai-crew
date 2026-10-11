@@ -1,6 +1,7 @@
 -- Headless check against chat spam: three crew, no gun anywhere, shotgun shells and plates in the chest but no wood
--- anywhere (a shotgun needs some). They used to start a shotgun, find it short of wood, say so, and start again twice
--- a second, each of them. Over 2 minutes each may say only a few lines, and the same news once for the crew.
+-- anywhere (a shotgun needs some), and fish in it (no fishing trips: the map round the test area is random). They used
+-- to start a shotgun, find it short of wood, say so, and start again twice a second, each of them. Over 2 minutes each
+-- may say only a few lines, and the same news once for the crew.
 local out = {}
 local function log(s) out[#out + 1] = s helpers.write_file("ac-spam.txt", table.concat(out, "\n") .. "\n") end
 local NAMES = { "Rook", "Mara", "Juno" }
@@ -18,7 +19,7 @@ script.on_event(defines.events.on_tick, function(ev)
     s.set_tiles(tiles)
     for _, r in ipairs({ "shotgun", "shotgun-shell" }) do f.recipes[r].enabled = true end
     local chest = s.create_entity({ name = "iron-chest", position = { 0.5, 0.5 }, force = f })
-    for _, it in ipairs({ { "shotgun-shell", 20 }, { "iron-plate", 200 }, { "copper-plate", 200 }, { "iron-gear-wheel", 20 } }) do
+    for _, it in ipairs({ { "shotgun-shell", 20 }, { "iron-plate", 200 }, { "copper-plate", 200 }, { "iron-gear-wheel", 20 }, { "raw-fish", 30 } }) do
       chest.insert({ name = it[1], count = it[2] })
     end
     for i, n in ipairs(NAMES) do remote.call("ai-crew", "hire", n, "nauvis", { x = i * 2, y = 2 }) end
