@@ -13,7 +13,7 @@ player and the server on FSE, with `fse-std`).
    "AI Crew". That's all for the crew's work, goals and combat.
 2. For chat, voices and ADA: [FSE](https://github.com/watdafawx/fse) (unzip it into the game's
    folder), and add this folder to `FSE_PYPATH` in `fse\fse.env` there (`aicrew.py` is
-   loaded from there). Natural voices: `pip install edge-tts`; ADA's effects: ffmpeg (`winget install Gyan.FFmpeg`).
+   loaded from there). Natural voices: `uv pip install --system edge-tts kokoro-onnx`; ADA's effects: ffmpeg (`winget install Gyan.FFmpeg`).
 3. For production lines in goals: [bpgen](https://github.com/watdafawx/bpgen) (its in-game mod and FSE).
 
 ## The window
@@ -149,11 +149,13 @@ When you've been away from the keyboard for 2 minutes the crew chat among themse
 the AI when one is set up, stock lines otherwise (setting: "Crew chatter while you are away"). The AI is shown their
 last lines so it doesn't repeat them.
 
-Items come from your pockets, chests near you and the logistic network you stand in. What they take from a chest
+Items come from your pockets, chests near you, belts within 24 tiles of you (before hand-crafting what goes by on
+them; not a bpgen line's belts) and the logistic network you stand in. What they take from a chest
 (or your pockets) out of reach they walk over to first, as a player would, once a minute per place and item (the
 next few they took along on the first trip); for a ghost or an upgrade the trip comes before the walk to it. The
 logistic network still hands items over directly, as if bots brought them. What's left in their pockets after
-building they bring to you. Everything but the chat works without fse.
+building they bring to you. Standing still on a ghost your construction robots can reach, they step off it so the
+robots can build. Everything but the chat works without fse.
 
 ## AI and voices (needs FSE)
 
@@ -176,14 +178,18 @@ window's Settings tab (Save & test tells you at once whether it works); the prov
 
 Or set `OPENROUTER_API_KEY` (etc.) before starting the game. The Model setting overrides the pick.
 
-Voices: `pip install edge-tts` for natural neural voices (each crew member has their own, ADA is Ava); without it
+Voices: `uv pip install --system edge-tts` for natural neural voices (each crew member has their own); without it
 Windows' built-in voices are used. Toggle crew voices, ADA, and "ADA words her lines with the AI" per player.
 
 ADA's voice: Satisfactory's ADA is, by the community's ear, Google's WaveNet `en-US-Wavenet-C` with a multi-voice
-chorus and a doubled, slightly detuned echo. Here a neural edge-tts voice (pick it in Settings: ava, jenny, aria,
-emma, michelle; **Hear** plays a line) goes through the same effects with ffmpeg when it's installed
-(`winget install Gyan.FFmpeg`). A short chime plays before each line: a synthesized one (two rising bell tones with
-an echo), or your own `ada-chime.wav` put next to `aicrew.py`.
+chorus and a doubled, slightly detuned echo. Here a neural voice (pick it in Settings; **Hear** plays a line) goes
+through the same effects with ffmpeg when it's installed (`winget install Gyan.FFmpeg`). A short chime plays before
+each line: a synthesized one (two rising bell tones with an echo), or your own `ada-chime.wav` put next to `aicrew.py`.
+
+ADA's default voice, **heart**, runs on your own computer: [Kokoro](https://github.com/thewh1teagle/kokoro-onnx)'s
+`af_heart` (`uv pip install --system kokoro-onnx`). Its model (~350 MB) downloads once, on ADA's first line, into
+`%LOCALAPPDATA%\ai-crew\kokoro`; she speaks as Ava until it's there. The others (ava, jenny, aria, emma, michelle) are
+edge-tts' online voices.
 
 ADA speaks on: research finished, research queue empty, first of each science pack produced, rocket launched, your
 death, crew hired or lost.
@@ -204,6 +210,7 @@ python test/run.py ac-spam 7300    headless game: no gun, a shotgun short of woo
 python test/run.py ac-car 12100    headless game: fuel a car, drive 120 tiles to a rock and back; no fuel: mine coal for a furnace
 python test/run.py ac-train 9100   headless game: ride a train to the far stop, mine there, get off a stalled train, walk home
 python test/run.py ac-belt 6100    headless game: across a field of running belts and back; standing on a belt, not carried off
+python test/run.py ac-bots 3610   headless game: crafts gears from plates on a belt; steps off a ghost for construction robots
 python test/run.py ac-hint 18800   headless game: starved machines pointed out (once), research suggested after 5 idle minutes
 python test/run.py ac-jet 6100     headless game: a rock inside a closed ring of walls: fly in, mine it, fly out
 python test/run.py ac-roam 36010   headless game: roams round home, powers a dark assembler, finds and kills a worm

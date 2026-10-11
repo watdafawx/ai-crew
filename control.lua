@@ -582,6 +582,34 @@ local function network(m)
   return m.entity.surface.find_logistic_network_by_position(anchor(m), m.entity.force)
 end
 
+local function in_box(box, pos, pad)
+  pad = pad or 0
+  return pos.x >= box[1] - pad and pos.y >= box[2] - pad and pos.x <= box[1] + box[3] + pad and pos.y <= box[2] + box[4] + pad
+end
+
+-- belt lanes near the owner (or home): items going by are fair game before hand-crafting them, as a player grabs
+-- plates off the bus. Not a bpgen line's belts (the crew feed and empty those) or a keep-out zone.
+-- chisle: one search per member a tick, the lanes kept in a plain local (rebuilt each tick, never saved)
+local belt_lanes
+do local belt_cache = {} function belt_lanes(m)
+  local c = belt_cache[m.name]
+  if c and c.tick == game.tick then return c.lanes end
+  local lanes, boxes = {}, {}
+  for _, g in pairs(storage.goals or {}) do
+    if g.line and g.line.box then boxes[#boxes + 1] = g.line.box end
+  end
+  for _, b in pairs(m.entity.surface.find_entities_filtered({ type = { "transport-belt", "underground-belt", "splitter" },
+    force = m.entity.force, position = anchor(m), radius = 24 })) do
+    local mine = not kept_out(b.surface, b.position)
+    for _, box in ipairs(boxes) do if mine and in_box(box, b.position, 1) then mine = false end end
+    if mine then
+      for i = 1, b.get_max_transport_line_index() do lanes[#lanes + 1] = b.get_transport_line(i) end
+    end
+  end
+  belt_cache[m.name] = { tick = game.tick, lanes = lanes }
+  return lanes
+end end
+
 -- inventories the crew may take from: the owner's pockets, then chests near the owner (or home)
 local function sources(m, chests_only)
   local out = chests(m)
@@ -594,6 +622,7 @@ local function available(m, item, quality, chests_only)
   local id = { name = item, quality = quality or "normal" }
   local n = 0
   for _, inv in pairs(sources(m, chests_only)) do n = n + inv.get_item_count(id) end
+  for _, l in pairs(belt_lanes(m)) do n = n + l.get_item_count(id) end
   local net = network(m)
   return net and n + net.get_item_count(id) or n
 end
@@ -628,6 +657,19 @@ local function take(m, item, count, quality, chests_only)
         note_visit(m, src.entity_owner, item)
       end
       got = got + ins
+    end
+  end
+  for _, l in pairs(got < count and belt_lanes(m) or {}) do
+    if got >= count then break end
+    if l.valid then
+      local n = math.min(count - got, l.get_item_count(id))
+      local ins = n > 0 and inv.insert({ name = item, count = n, quality = id.quality }) or 0
+      if ins > 0 then
+        local out = l.remove_item({ name = item, count = ins, quality = id.quality })
+        if out < ins then inv.remove({ name = item, count = ins - out, quality = id.quality }) end
+        if out > 0 then note_visit(m, l.owner, item) end
+        got = got + out
+      end
     end
   end
   local net = got < count and network(m)
@@ -1990,11 +2032,6 @@ end
 -- a line from bpgen for a goal: {state = "asked"|"placed", box = {x, y, w, h}, inputs = {{items, position}},
 -- outputs = {{item, position}}}. bpgen places its ghosts; the crew build them (auto build), power and fuel it, feed
 -- its inputs by hand and empty its output.
-
-local function in_box(box, pos, pad)
-  pad = pad or 0
-  return pos.x >= box[1] - pad and pos.y >= box[2] - pad and pos.x <= box[1] + box[3] + pad and pos.y <= box[2] + box[4] + pad
-end
 
 local function box_area(box) return { { box[1] - 1, box[2] - 1 }, { box[1] + box[3] + 1, box[2] + box[4] + 1 } } end
 
@@ -3360,9 +3397,14 @@ jobs.on_answer = on_answer
 
 local mod_gui = require("mod-gui")
 local fstd = script.active_mods["fse-std"] and require("__fse-std__/window") or nil
+-- themes (fse-std 0.6+): the window in the player's theme from fse-std's theme window
+local theme = fstd and (function()
+  local ok, t = pcall(require, "__fse-std__/theme")
+  return ok and t.adopt and t or nil
+end)()
 local WIN = "aic_window"
 local PROVIDER_CHOICES, TOGGLES
-local ADA_VOICES = { "ava", "jenny", "aria", "emma", "michelle" }
+local ADA_VOICES = { "heart", "ava", "jenny", "aria", "emma", "michelle" }
 
 local function goal_text(owner)
   local nd = needs(owner)[1]
@@ -3470,7 +3512,8 @@ end
 
 local function new_window(player)
   if fstd then
-    return fstd.create(player, { name = WIN, title = "AI Crew", width = 640, height = 470, min_width = 520, min_height = 300 })
+    return fstd.create(player, { name = WIN, title = "AI Crew", width = 640, height = 470, min_width = 520, min_height = 300,
+      themed = theme ~= nil })
   end
   local screen = player.gui.screen
   if screen[WIN] then screen[WIN].destroy() end
@@ -3635,7 +3678,7 @@ local function build_panel(player)
   ai.add({ type = "line" })
   r = row(ai)
   r.add({ type = "label", caption = "ADA voice" })
-  local cur_v = player_setting(player, "ai-crew-ada-voice") or "ava"
+  local cur_v = player_setting(player, "ai-crew-ada-voice") or "heart"
   local vi = 1
   for i, v in ipairs(ADA_VOICES) do if v == cur_v then vi = i end end
   r.add({ type = "drop-down", name = "aic_set_ada_voice", items = ADA_VOICES, selected_index = vi,
@@ -3646,6 +3689,7 @@ local function build_panel(player)
       tooltip = c[3] })
   end
   tabs.selected_tab_index = math.min(st.tab or 1, 4)
+  if theme then theme.adopt(frame) end
 
   if py() and not ai_state()[player.index] then check_ai(player) end
 end
@@ -3928,7 +3972,7 @@ end)
 
 script.on_event(defines.events.on_gui_selection_state_changed, function(ev)
   if ev.element.name == "aic_set_ada_voice" then
-    game.get_player(ev.player_index).mod_settings["ai-crew-ada-voice"] = { value = ADA_VOICES[ev.element.selected_index] or "ava" }
+    game.get_player(ev.player_index).mod_settings["ai-crew-ada-voice"] = { value = ADA_VOICES[ev.element.selected_index] or "heart" }
   end
   if ev.element.name == "aic_who" then ui(game.get_player(ev.player_index)).who = ev.element.selected_index end
 end)
@@ -4015,6 +4059,28 @@ local function init()
 end
 script.on_init(init)
 
+-- standing still on a ghost that construction robots can reach (their body would block it): step off it
+local function yield_to_bots(m)
+  local e = m.entity
+  local s, pos = e.surface, e.position
+  local function on_ghost(p)
+    for _, g in pairs(s.find_entities_filtered({ type = "entity-ghost", force = e.force, position = p, radius = 4 })) do
+      local b = g.bounding_box
+      if p.x > b.left_top.x - 0.3 and p.x < b.right_bottom.x + 0.3 and p.y > b.left_top.y - 0.3 and p.y < b.right_bottom.y + 0.3 then
+        return g
+      end
+    end
+  end
+  local g = on_ghost(pos)
+  if not g or #s.find_logistic_networks_by_construction_area(pos, e.force) == 0 then return end
+  for r = 1, 6 do
+    for _, d in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+      local to = s.find_non_colliding_position(CREW, { x = pos.x + d[1] * r, y = pos.y + d[2] * r }, 0.5, 0.25)
+      if to and not on_ghost(to) then e.teleport(to) return end
+    end
+  end
+end
+
 -- you put something down where a crew member stands (their body would block it): they step aside first
 script.on_event(defines.events.on_pre_build, function(ev)
   local player = game.get_player(ev.player_index)
@@ -4066,6 +4132,7 @@ script.on_event(defines.events.on_tick, function(ev)
       if (t + m.phase) % (war and 15 or 30) == 0 then fight(m) end
       if (t + m.phase) % 10 == 0 and not m.fly and (not m.move or (war and (t + m.phase) % 60 == 0)) and not m.retreat then think(m) end
       if m.retreat and not m.move and (t + m.phase) % 60 == 0 then go(m, anchor(m), 4) end
+      if (t + m.phase) % 30 == 7 and not m.move and not e.vehicle then yield_to_bots(m) end
     end
   end
   if t % 5 == 0 and next(jobs.running) then
@@ -4311,5 +4378,6 @@ remote.add_interface("ai-crew", {
 
 -- the fse-std window's own handlers (title bar close, remembered place, resize grip), after ours
 if fstd then
-  require("__fse-std__/safe").chain("ai-crew", { require("__fse-std__/input").handlers, fstd.handlers })
+  require("__fse-std__/safe").chain("ai-crew", { require("__fse-std__/input").handlers, fstd.handlers,
+    theme and theme.handlers or {} })
 end

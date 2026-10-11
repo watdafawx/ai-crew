@@ -29,6 +29,7 @@ assert aicrew.extract_json("<think>{nope}</think> {bad {\"a\": 1}") == {"a": 1}
 assert aicrew.extract_json("no json") is None
 assert aicrew.voice_for("ada:jenny") == "en-US-JennyNeural"
 assert aicrew.voice_for("ada") == "en-US-AvaNeural" and aicrew.voice_for(9) == aicrew.CREW_VOICES[1]
+assert aicrew.voice_for("ada:heart") == "en-US-AvaNeural"  # (Kokoro's, locally; Ava when it can't)
 
 # ask() with a faked model reply: plain text falls back to a spoken reply, JSON passes through
 real = aicrew.chat

@@ -8,7 +8,8 @@ Lua calls (strings in, JSON strings out):
   aicrew:speak  {text, voice}   queued and spoken on a thread; returns at once
 
 Every provider speaks the OpenAI chat API. Keys are free to get (see NO_KEY); Ollama needs none.
-Voices: edge-tts when installed (pip install edge-tts), else Windows' own SAPI voices.
+Voices: edge-tts when installed (uv pip install edge-tts), else Windows' own SAPI voices. ADA's default "heart" voice
+is local: Kokoro (uv pip install kokoro-onnx), falling back to those.
 """
 import json
 import os
@@ -251,7 +252,12 @@ def check(s):
         import edge_tts  # noqa: F401
         tts = "edge-tts (natural voices)"
     except ImportError:
-        tts = "Windows voices (pip install edge-tts for natural ones)"
+        tts = "Windows voices (uv pip install edge-tts for natural ones)"
+    try:
+        import kokoro_onnx  # noqa: F401
+        tts += "; ADA's heart voice: Kokoro (local)"
+    except ImportError:
+        tts += "; ADA's heart voice: uv pip install kokoro-onnx"
     out = {"tts": tts}
     try:
         name, _, key, model = pick_provider(llm)
@@ -310,10 +316,10 @@ _sapi = None
 
 
 def voice_for(voice):
-    if isinstance(voice, str) and voice.startswith("ada:"):  # (the ADA voice picked in game: ava, jenny, ...)
+    if isinstance(voice, str) and voice.startswith("ada:") and voice != "ada:heart":  # (picked in game: ava, jenny, ...)
         return "en-US-" + voice[4:].capitalize() + "Neural"
-    if voice in EDGE_VOICES:
-        return EDGE_VOICES[voice]
+    if str(voice).startswith("ada"):  # (heart is local, Kokoro: Ava when it can't speak)
+        return EDGE_VOICES["ada"]
     try:
         return CREW_VOICES[int(voice) % len(CREW_VOICES)]
     except (TypeError, ValueError):
@@ -353,18 +359,88 @@ ADA_FILTER = ("[0:a]asplit=3[a][b][c];"
               "highpass=f=120,volume=1.1")
 
 
-def _ada_fx(path):
-    """path's audio through ADA's effects (in place); False without ffmpeg"""
+def _ada_fx(path, dest=None):
+    """path's audio (24 kHz) through ADA's effects into the mp3 dest (default: path itself); False without ffmpeg"""
     import shutil
     ff = shutil.which("ffmpeg")
     if not ff:
         return False
     out = path[:-4] + "-ada.mp3"
-    r = subprocess.run([ff, "-y", "-loglevel", "error", "-i", path, "-filter_complex", ADA_FILTER, "-b:a", "96k", out],
+    # (-nostdin: else ffmpeg waits on the game's stdin for keys and never ends)
+    r = subprocess.run([ff, "-nostdin", "-y", "-loglevel", "error", "-i", path, "-filter_complex", ADA_FILTER, "-b:a", "96k", out],
                        capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if r.returncode or not os.path.exists(out):
         return False
-    os.replace(out, path)
+    os.replace(out, dest or path)
+    return True
+
+
+# ADA's "heart" voice: Kokoro's af_heart, run on this computer (uv pip install kokoro-onnx). Its model (~350 MB) is
+# fetched once into KOKORO_DIR on a thread; Ava (edge-tts) or Windows' voice speaks until it's there.
+KOKORO_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/"
+KOKORO_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir(), "ai-crew", "kokoro")
+KOKORO_FILES = ("kokoro-v1.0.onnx", "voices-v1.0.bin")
+_kokoro = None
+_kokoro_fetch = None
+
+
+def _fetch_kokoro():
+    os.makedirs(KOKORO_DIR, exist_ok=True)
+    for f in KOKORO_FILES:
+        path = os.path.join(KOKORO_DIR, f)
+        if not os.path.exists(path):
+            try:
+                urllib.request.urlretrieve(KOKORO_URL + f, path + ".part")
+                os.replace(path + ".part", path)
+            except Exception as e:  # noqa: BLE001 - tried again on ADA's next line
+                print(f"[aicrew] kokoro download: {e}")
+                return
+
+
+def kokoro_model():
+    """the loaded Kokoro model, or None while its files are missing (then fetched); ImportError without kokoro-onnx"""
+    global _kokoro, _kokoro_fetch
+    if _kokoro is None:
+        from kokoro_onnx import Kokoro
+        files = [os.path.join(KOKORO_DIR, f) for f in KOKORO_FILES]
+        if all(os.path.exists(f) for f in files):
+            _kokoro = Kokoro(*files)
+        elif _kokoro_fetch is None or not _kokoro_fetch.is_alive():
+            _kokoro_fetch = threading.Thread(target=_fetch_kokoro, name="aicrew-kokoro", daemon=True)
+            _kokoro_fetch.start()
+    return _kokoro
+
+
+def _say_kokoro(text):
+    """text in ADA's heart voice, with her effects; False when Kokoro can't (yet): another voice speaks instead"""
+    try:
+        k = kokoro_model()
+        if not k:
+            return False
+        samples, rate = k.create(text, voice="af_heart", speed=0.95, lang="en-us")
+    except Exception as e:  # noqa: BLE001 - not installed, or a broken model: Ava instead
+        if not isinstance(e, ImportError):
+            print(f"[aicrew] kokoro: {e}")
+        return False
+    import wave
+    fd, path = tempfile.mkstemp(suffix=".wav", prefix="aicrew-")
+    os.close(fd)
+    mp3 = path[:-4] + ".mp3"
+    try:
+        with wave.open(path, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes((samples.clip(-1, 1) * 32767).astype("<i2").tobytes())
+        if _ada_fx(path, mp3):
+            _play_mp3(mp3)
+        else:
+            import winsound
+            winsound.PlaySound(path, winsound.SND_FILENAME)
+    finally:
+        for p in (path, mp3):
+            if os.path.exists(p):
+                os.unlink(p)
     return True
 
 
@@ -417,6 +493,8 @@ def _say(text, voice):
             _play_chime()
         except Exception as e:  # noqa: BLE001 - no chime is fine
             print(f"[aicrew] chime: {e}")
+    if voice == "ada:heart" and _say_kokoro(text):
+        return
     try:
         import asyncio
         import edge_tts
