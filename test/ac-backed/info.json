@@ -1,0 +1,2 @@
+{"name": "ac-backed", "version": "0.0.1", "title": "ai crew backed-up test", "author": "mtopfox", "factorio_version": "2.0",
+ "dependencies": ["base", "ai-crew"]}

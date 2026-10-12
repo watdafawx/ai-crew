@@ -125,7 +125,7 @@ as much as you: their body is thinner than yours to begin with.
 **Roam** (or "roam", "wander", "explore" in chat): instead of following you, a crew member wanders on its own within
 40 tiles of you (of home when you're not there), stops a while, looks around and deals with what it finds as a player
 would: goes after a nest or worm when it's armed and **Fight** is ticked, runs poles to a machine standing dark (while
-poles are all it takes; with **Auto** on), and mentions machines starved of inputs or backed up (at most every 3
+poles are all it takes; with **Auto** on), and mentions machines starved of inputs or backed up (nothing taking their output at all; a full belt is no news) (at most every 3
 minutes). It still builds, clears and works on the goal like everyone else, and catches up when you walk off.
 
 **Notes and keep-out places.** "remember the north is for iron" keeps a note where you stand; "keep out" (also
@@ -142,7 +142,7 @@ Unanswered, the offer lapses after 5 minutes. With an AI, it words the offer and
 
 **Hints** (setting "Crew give hints", on by default). What a player at your side would point out, said in chat and
 out loud by the one nearest you: machines starved of an ingredient (and which: "4 machines making iron gear wheel are
-starved of iron plate"), power running short, machines with none, smelting or mining backed up, something made far
+starved of iron plate"), power running short, machines with none, smelting or mining backed up (nowhere for the output to go), something made far
 beyond what's used, and after 5 minutes with nothing built, crafted or researched, what to do next: a research to
 start, else an offer to make what runs short. One every 5 minutes at most, the same one not again for half an hour;
 worded by the AI when one is set up.
@@ -233,6 +233,7 @@ python test/run.py ac-train 9100   headless game: ride a train to the far stop, 
 python test/run.py ac-belt 6100    headless game: across a field of running belts and back; standing on a belt, not carried off
 python test/run.py ac-bots 3610   headless game: crafts gears from plates on a belt; steps off a ghost for construction robots
 python test/run.py ac-trip 7300   headless game: no fuel: mine coal 60 tiles out, fuel a furnace at home, back where it stood; hurt: falls back, heals, back again
+python test/run.py ac-backed 3100  headless game: drills onto ground are "backed up"; drills onto a full belt are not
 python test/run.py ac-hint 18800   headless game: starved machines pointed out (once), research suggested after 5 idle minutes
 python test/run.py ac-jet 6100     headless game: a rock inside a closed ring of walls: fly in, mine it, fly out
 python test/run.py ac-roam 36010   headless game: roams round home, powers a dark assembler, finds and kills a worm

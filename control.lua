@@ -2379,13 +2379,32 @@ end
 -- Roam: instead of following, each one wanders the area round the player (or home) on its own, stops a while to look
 -- around, and deals with what it finds as a player would: goes after a nest when it's armed and may fight, runs poles
 -- to a machine standing dark (pole by pole, while poles are all it takes) and mentions machines starved of inputs or
--- backed up. Each thing once; those remarks at most every 3 minutes a member.
+-- backed up (nothing at all taking their output; a full belt is no news). Each thing once; those remarks at most every
+-- 3 minutes a member.
 
 local S = defines.entity_status
 local REMARKS = {}
 for name, kind in pairs({ item_ingredient_shortage = "starved", no_ingredients = "starved", fluid_ingredient_shortage = "starved",
   full_output = "backed", waiting_for_space_in_destination = "backed" }) do
   if S[name] then REMARKS[S[name]] = kind end
+end
+-- does something take f's output (an inserter or loader taking from it; a drill's belt, chest or machine)? Then "output
+-- full" is only a full belt or chest downstream: normal, not worth a word. (A field of REMARKS: the main chunk's
+-- locals are full)
+function REMARKS.taken(f)
+  if f.type == "mining-drill" then
+    return f.drop_target ~= nil or f.surface.count_entities_filtered({ position = f.drop_position, limit = 1,
+      type = { "transport-belt", "underground-belt", "splitter", "loader", "loader-1x1", "linked-belt" } }) > 0
+  end
+  local b = f.bounding_box
+  local area = { { b.left_top.x - 3, b.left_top.y - 3 }, { b.right_bottom.x + 3, b.right_bottom.y + 3 } }
+  for _, i in pairs(f.surface.find_entities_filtered({ type = "inserter", area = area })) do
+    if i.pickup_target == f then return true end
+  end
+  for _, l in pairs(f.surface.find_entities_filtered({ type = { "loader", "loader-1x1" }, area = area })) do
+    if l.loader_type == "output" and l.loader_container == f then return true end
+  end
+  return false
 end
 
 -- one look round where it stands; true when it found something to do or say
@@ -2414,7 +2433,7 @@ local function notice(m)
     position = e.position, radius = 20 })) do
     local st = f.status
     local kind = st == S.no_power and "dark" or REMARKS[st]
-    if kind and kept_out(s, f.position) then kind = nil end
+    if kind and kept_out(s, f.position) or kind == "backed" and REMARKS.taken(f) then kind = nil end
     if kind and (remark or kind == "dark") and new(f) then
       local job = kind == "dark" and m.auto ~= false and power_to(m, f, 0)
       if job and job.kind == "place" then
@@ -3095,7 +3114,8 @@ local function find_hint(owner, surface, force, at)
         g.n = g.n + 1
         starved[r.name] = g
       end
-    elseif (st == S.full_output or st == S.waiting_for_space_in_destination) and (f.type == "furnace" or f.type == "mining-drill") then
+    elseif (st == S.full_output or st == S.waiting_for_space_in_destination) and (f.type == "furnace" or f.type == "mining-drill")
+      and not REMARKS.taken(f) then -- (output onto a full belt or into a full chest: normal)
       local r = f.type == "furnace" and f.get_recipe()
       local what = r and r.name or f.mining_target and f.mining_target.name or f.name
       backed[what] = (backed[what] or 0) + 1
