@@ -228,6 +228,15 @@ new crew), never the same one twice in a row, and with "ADA words her lines with
 ADA speaks on: research finished, research queue empty, first of each science pack produced, rocket launched, your
 death, crew hired or lost.
 
+## The code
+
+`control.lua` holds the constants, `think` and `idle`, the events and the remote interface, and loads the rest:
+`voice.lua` (what they say, ADA, chatter, the AI jobs), `plan.lua` (items and where to get them, machines, power,
+plans, goals), `move.lua` (walking, jetpacks, vehicles), `work.lua` (the jobs), `fight.lua` (guns, fights, defending,
+fishing), `roam.lua` (roaming, offers, hints), `orders.lua` (hiring, orders, chat), `window.lua` (the window, its
+settings, the hover card). `lines.lua`: the stock lines. Each file ends with what it shares and a `link` that gets
+what it uses of the others' (see the top of `control.lua`).
+
 ## Tests
 
 From this folder:
