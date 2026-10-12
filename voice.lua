@@ -191,6 +191,53 @@ local function face(m, pos)
   pcall(function() e.direction = DIRS[d + 1] end)
 end
 
+-- A line over a crew member's head, for `ttl` ticks. Short: a long one is cut at a word with "…" (the whole of it
+-- goes to the chat). Raised above a teammate's nearby line instead of over it.
+local BUBBLE_CHARS, BUBBLE_ROW = 44, 0.75
+local function cut(text)
+  if #text <= BUBBLE_CHARS then return text end
+  local s = text:sub(1, BUBBLE_CHARS)
+  while #s > 0 and s:byte(-1) >= 0x80 and s:byte(-1) < 0xC0 do s = s:sub(1, -2) end  -- (not inside a UTF-8 letter)
+  if #s > 0 and s:byte(-1) >= 0xC0 then s = s:sub(1, -2) end
+  local open, close = s:match(".*()%["), s:match(".*()%]")  -- (not inside a [tag])
+  if open and (not close or close < open) then s = s:sub(1, open - 1) end
+  local word = s:match("^(.*%S)%s+%S*$")  -- (at a word)
+  if word and #word > BUBBLE_CHARS / 2 then s = word end
+  return (s:gsub("[%s%p]+$", "")) .. "…"
+end
+
+local function bubble(m, text, scale, ttl)
+  if m.bubble and m.bubble.valid then m.bubble.destroy() end
+  m.bubble = nil
+  local e = m.entity
+  if not (e and e.valid) then return end
+  text = cut(text)
+  scale = scale or 1.1
+  local w = #text * 0.2 * scale  -- (about how wide, in tiles)
+  local p = e.position
+  local taken = {}  -- (the heights of teammates' lines this one would cross)
+  for _, o in pairs(crew()) do
+    local oe = o.entity
+    if o ~= m and o.bubble and o.bubble.valid and oe and oe.valid and oe.surface == e.surface then
+      local q = oe.position
+      if math.abs(q.x - p.x) < (w + (o.bubble_w or 4)) / 2 + 0.5 and math.abs(q.y - p.y) < 4 then
+        taken[#taken + 1] = q.y + (o.bubble_dy or -2.9)
+      end
+    end
+  end
+  local dy = -2.9
+  for _ = 1, 6 do
+    local clear = true
+    for _, y in ipairs(taken) do if math.abs(p.y + dy - y) < BUBBLE_ROW then clear = false break end end
+    if clear then break end
+    dy = dy - BUBBLE_ROW
+  end
+  m.bubble_w, m.bubble_dy = w, dy
+  m.bubble = rendering.draw_text({ text = text, surface = e.surface, target = { entity = e, offset = { 0, dy } },
+    color = m.color, scale = scale, alignment = "center", time_to_live = ttl or 300 })
+  return m.bubble
+end
+
 local function say(m, text, how, at)
   local bank = m.bank_line
   m.bank_line = nil
@@ -200,9 +247,7 @@ local function say(m, text, how, at)
   local p = m.owner and game.get_player(m.owner) -- (they look at you when they talk, near you)
   local pc = p and p.valid and p.character
   if pc and pc.surface == e.surface and dist2(pc.position, e.position) < 900 then face(m, pc.position) end
-  if m.bubble and m.bubble.valid then m.bubble.destroy() end
-  m.bubble = rendering.draw_text({ text = text, surface = e.surface, target = { entity = e, offset = { 0, -2.9 } },
-    color = c, scale = 1.1, alignment = "center", time_to_live = 300 })
+  bubble(m, text, 1.1, 300)
   if how == "quiet" then return end
   local t = game.tick
   if how == nil then -- (any line it said in the last 5 minutes, not just the last one)
@@ -357,7 +402,7 @@ return {
   share = { ada = ada, ai_state = ai_state, any_player = any_player, canned = canned, chatter = chatter, face = face,
     jobs = jobs, kept_out = kept_out, line = line, llm_settings = llm_settings, notes = notes,
     player_setting = player_setting, progress = progress, py = py, queued = queued, react = react, remember = remember,
-    say = say, speak = speak, trait = trait, ZONE = ZONE },
+    say = say, bubble = bubble, speak = speak, trait = trait, ZONE = ZONE },
   link = function(A)
     ADA_COLOR, add_job, context, crew, DIRS, dist2 = A.ADA_COLOR, A.add_job, A.context, A.crew, A.DIRS, A.dist2
     find_member, job_for, LINES, members_of, pick = A.find_member, A.job_for, A.LINES, A.members_of, A.pick

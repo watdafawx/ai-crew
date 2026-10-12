@@ -12,8 +12,8 @@ end)
 local function shot(name) game.take_screenshot({ player = 1, path = "ac-gui-" .. name .. ".png", show_gui = true }) end
 local function tab(i)
   remote.call("ai-crew", "panel", 1, i)
-  local w = game.get_player(1).gui.screen.aic_window
-  if w then w.location = { 40, 120 } end
+  -- (by the screen's left edge, as a drag puts it: the rail is kept on the screen)
+  remote.call("ai-crew", "place", 1, 40, 120)
 end
 local steps = {
   [60] = function()
@@ -88,9 +88,12 @@ local steps = {
     helpers.write_file("ac-gui-result.txt", string.format("key saved: %s | provider from it: %s | key shown: %s | error: %s",
       tostring(key == "gsk_test0123456789abcd"), tostring(a.provider), tostring(a.key), tostring(a.error))
       .. " | layout: rail " .. tostring(game.get_player(1).gui.screen.aic_window__left ~= nil) .. ", dock "
-      .. tostring(game.get_player(1).gui.screen.aic_window__bottom ~= nil) .. ", fire asks "
+      .. tostring(game.get_player(1).gui.screen.aic_window__bottom ~= nil) .. " (width "
+      .. tostring(game.get_player(1).gui.screen.aic_window__bottom and game.get_player(1).gui.screen.aic_window__bottom.tags.fstd_attach.w)
+      .. " under a 640 window), fire asks "
       .. tostring(game.get_player(1).gui.screen.fstd_confirm_aic_fire ~= nil)
       .. " | settings controls: " .. tostring(storage.controls)
+      .. " | rail x " .. tostring(game.get_player(1).gui.screen.aic_window__left and game.get_player(1).gui.screen.aic_window__left.location.x)
       .. " | hover: " .. (game.get_player(1).gui.screen.aic_card and "card"
         or native and (native.call("entityinfo", "status", "") or ""):find('"shown":[1-9]') and "rows in the game's panel" or "nothing"))
     helpers.write_file("ac-gui-done.txt", "done")

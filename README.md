@@ -29,13 +29,13 @@ pages are tabs on its left edge, the orders for everyone hang below it, and the 
 orders run as is, the rest goes to the AI). The gear by the close button opens its settings. Untick **Docked** there to
 have it all inside the window; without fse-std it is.
 
-- **Crew**: the crew and jobs queued, whether AI chat works, each member's job with **Fight**, **Auto**,
-  **Follow/Roam/Stay** (click to switch), **Stop**, **Fire** (asks first); **Hire**; everyone: **Build**, **Clear**,
-  **Upgrade**, **Deliver**, **Come**, **Roam**, **Stop**, **Clear nests**.
+- **Crew**: the crew, jobs queued and how many are busy, whether AI chat works, each member's job with **Fight**, **Auto**,
+  **Follow me/Roam/Stay** (click to switch), **Stop**, **Fire** (asks first); **Hire**; everyone: **Build**,
+  **Deconstruct**, **Upgrade**, **Deliver**, **Follow me**, **Roam**, **Stop all**, **Clear nests**.
 - **Orders**: who (or anyone), an item and a count: **Get** (from chests or the network, else mined, crafted or made in
   a machine; brought to you), **Mine**, **Craft**.
-- **Goal**: an item, how many to have, optionally a **Production line** (bpgen) at a rate; how far it is (a bar), what
-  they're on.
+- **Goal**: an item, how many to have, optionally a **Production line** at a rate (shown with bpgen); how far it is (a bar), what
+  they're on; **Drop goal** stops it.
 - **Settings** (the gear): AI provider, API key, model (**Save & test** checks it for real and shows the answer or the
   error), ADA and the voices, what the crew do on their own; **Docked**, **Theme...**, **Reset size and place**. The same
   values as Settings > Mod settings > Per player.
@@ -167,7 +167,8 @@ with their own stock lines, and goes through all of them before one comes round 
 own (built 12, made 10 plates for the goal) is only a bubble over their head; news (a shortage, a nest, being hurt,
 the job you gave them done) goes to chat and is spoken, but only one voice every 3 seconds and one member's news
 aloud at most every 20 seconds; any line a member said in the last 5 minutes, or a teammate said in the last minute,
-is only a bubble. Answers to you are always spoken. A line about a place (a nest, a dark or starved machine, an
+is only a bubble. A bubble is cut short with "…" (the whole line is in chat) and sits above a nearby teammate's
+instead of over it. Answers to you are always spoken. A line about a place (a nest, a dark or starved machine, an
 attack, where they got hurt, a hint, a crew member down) ends in a map pin in chat: click it to see where "over here" is. The stock lines are in `lines.lua` (several per manner for each
 kind of news). With "Crew word their lines with the AI" on (the default; the window's gear, voices) and an AI that
 answers, a line about to be spoken goes to the AI first and is said in that member's own words, the same facts; one

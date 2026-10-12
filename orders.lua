@@ -1,8 +1,8 @@
 -- AI Crew: the crew (hire, find), orders typed or said in chat, and the jobs they make. One of control.lua's files.
 
 -- (the other files' that this one uses: set by link, at the end)
-local ACKS, ada, add_need, any_player, available, claims, COLORS, CREW, crew, dist2, goals, handcraft_recipe, jobs,
-  line, llm_settings, MAX_CREW, NAMES, nearest_source, notes, pick, plan, player_setting, pretty, py, RADIUS, remember,
+local ACKS, ada, add_need, any_player, available, bubble, claims, COLORS, CREW, crew, dist2, goals, handcraft_recipe,
+  jobs, line, llm_settings, MAX_CREW, NAMES, nearest_source, notes, pick, plan, player_setting, pretty, py, RADIUS, remember,
   resolve_item, say, stop_mining, stop_walk, trait, unload, ZONE
 
 -- ---------------------------------------------------------------------------------------------------------- orders
@@ -403,9 +403,7 @@ local function order(owner, text)
   jobs.start(owner, "aicrew:ask", helpers.table_to_json({ message = rest, to = names, llm = llm,
     context = context(player, members_of(owner)) }), { kind = "ask", owner = owner, to = names })
   for _, m in pairs(members) do
-    if m.bubble and m.bubble.valid then m.bubble.destroy() end
-    m.bubble = rendering.draw_text({ text = "...", surface = m.entity.surface, target = { entity = m.entity, offset = { 0, -2.9 } },
-      color = m.color, scale = 1.4, alignment = "center", time_to_live = 600 })
+    bubble(m, "...", 1.4, 600)
   end
 end
 
@@ -444,7 +442,8 @@ return {
     job_for = job_for, map_marker = map_marker, match_owner = match_owner, members_of = members_of, order = order,
     tell = tell },
   link = function(A)
-    ACKS, ada, add_need, any_player, available, claims = A.ACKS, A.ada, A.add_need, A.any_player, A.available, A.claims
+    ACKS, ada, add_need, any_player, available = A.ACKS, A.ada, A.add_need, A.any_player, A.available
+    bubble, claims = A.bubble, A.claims
     COLORS, CREW, crew, dist2, goals, handcraft_recipe = A.COLORS, A.CREW, A.crew, A.dist2, A.goals, A.handcraft_recipe
     jobs, line, llm_settings, MAX_CREW, NAMES = A.jobs, A.line, A.llm_settings, A.MAX_CREW, A.NAMES
     nearest_source, notes, pick, plan, player_setting = A.nearest_source, A.notes, A.pick, A.plan, A.player_setting

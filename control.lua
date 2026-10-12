@@ -104,6 +104,7 @@ local low_burners, map_marker, members_of, mod_gui = A.low_burners, A.map_marker
 local nearest_source, open_frame, order, owner_char = A.nearest_source, A.open_frame, A.order, A.owner_char
 local plan, player_setting, players_stuff, progress = A.plan, A.player_setting, A.players_stuff, A.progress
 local propose, py, queued, react, refresh, riding = A.propose, A.py, A.queued, A.react, A.refresh, A.riding
+local place_window, resync_buttons = A.place_window, A.resync_buttons
 local roam, say, spot, stop_mining, theme, ui, walk = A.roam, A.say, A.spot, A.stop_mining, A.theme, A.ui, A.walk
 setmetatable(A, nil)
 
@@ -337,6 +338,7 @@ end
 
 script.on_event(defines.events.on_tick, function(ev)
   local t = ev.tick
+  if storage.aic_resync then resync_buttons(t) end -- (the crew button lit again after a join: window.lua)
   if not jobs.checked and t % 60 == 0 and not game.is_multiplayer() then -- (once a session, a second in: the
     jobs.checked = true                                                    -- AI tested for whoever is playing)
     storage.ai = nil -- (before 0.8.0)
@@ -614,6 +616,8 @@ remote.add_interface("ai-crew", {
     ui(player).inside = (not on) or nil
     build_panel(player)
   end,
+  -- (tests) the window moved to x, y (pixels) as the player drags it
+  place = function(player_index, x, y) place_window(game.get_player(player_index), x, y) end,
   -- (tests) the window opened on a tab
   panel = function(player_index, tab)
     local player = game.get_player(player_index)

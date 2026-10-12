@@ -1,0 +1,28 @@
+---------------------------------------------------------------------------------------------------
+Version: 0.18.1
+Date: 2026-10-12
+  Changes:
+    - Every text of the window, its settings and the Fire question can be translated (locale); the settings'
+      checkboxes are worded as the mod settings they set.
+    - Buttons that shared a name tell apart: the everyone row's "Clear" is "Deconstruct", the goal's is "Drop goal";
+      "Come" and the member's "Follow" are both "Follow me"; everyone's "Stop" is "Stop all".
+    - The "New crew" setting shows Roam, Follow me, Stay (not roam, follow, stay).
+    - The dock below the window is as wide as the window and follows its resizing (one row of orders when they fit,
+      else two); a crew member's status takes the room left and shows all of it in its tooltip.
+    - "Everyone:" as wide as its words, both rows of orders lined up after it; stat captions capitalised.
+    - A third number on the Crew page, how many are busy; the three tiles share the row. "AI chat is off – set a key
+      in" the gear, when it doesn't answer.
+    - The inputs say what they are: "Name" by Hire, "Item" and "×" before the count, "Have" on the Goal page, "Say"
+      by the chat box. "Production line" only shows with bpgen (it looked switched off without it); its rate only
+      takes input while it's ticked.
+    - The settings are no taller than the window (they hid the dock's orders) and all their folds are as wide.
+    - "Docked", "Theme..." and "Reset size and place" are fse-std's own words, as in the other mods' windows; Fire's
+      question has a red Fire.
+    - A crew member's line over their head is cut short with "…" (the whole of it is in chat) and sits above a nearby
+      teammate's line instead of across it.
+  Bugfixes:
+    - The crew button stayed lit after closing the window with its X.
+    - By the screen's left edge, the window's page tabs (out of its left side) went off the screen: the window is kept
+      where they show, also after a move or a resolution change.
+    - Inside the window, the Fire buttons touched the scroll bar.
+    - With GUI Unifyer, the crew button lost its lit look when a player joined with the window open.
