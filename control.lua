@@ -171,15 +171,16 @@ local function ada(text, vars)
     storage.ada_said[text] = used
     text = l:gsub("{(%w+)}", function(k) return vars and vars[k] ~= nil and tostring(vars[k]) or "" end)
   end
+  local gps = vars and vars.at and string.format(" [gps=%.1f,%.1f,%s]", vars.at.x, vars.at.y, vars.surface or "nauvis") or ""
   local p = any_player()
   if p and not player_setting(p, "ai-crew-ada") then return end
   if p and py() and player_setting(p, "ai-crew-ada-llm") then
     if jobs.start(p.index, "aicrew:ada", helpers.table_to_json({ text = text, llm = llm_settings(p) }),
-           { kind = "ada", text = text }) then
+           { kind = "ada", text = text, gps = gps }) then
       return
     end
   end
-  game.print("[color=" .. ADA_COLOR .. "][ADA][/color] " .. text)
+  game.print("[color=" .. ADA_COLOR .. "][ADA][/color] " .. text .. gps)
   speak(text, "ada")
 end
 
@@ -201,7 +202,7 @@ local function line(m, event, vars)
   used[l] = true
   m.recent[event] = used
   local text = l:gsub("{(%w+)}", function(k) return vars and vars[k] ~= nil and tostring(vars[k]) or "" end)
-  m.bank_line = { text = text, event = event } -- (say may have the AI word it)
+  m.bank_line = { text = text, event = event, at = vars and vars.at } -- (say may have the AI word it; at: where it's about)
   return text
 end
 
@@ -240,7 +241,9 @@ end
 -- talking a lot: then in chat only), "quiet" = routine (a bubble over its head, nothing else), "talk" = conversation
 -- (an answer to the player, chatter: always in chat and out loud). The same news twice within 5 minutes is a bubble.
 -- News from the line bank, with "Crew word their lines with the AI" on, goes to the AI first and comes back "worded":
--- in its own words, said like news (the checks against the same news twice were done on the bank's line)
+-- in its own words, said like news (the checks against the same news twice were done on the bank's line).
+-- at: where the line is about (a nest, a dark machine, an attack; a bank line's vars.at): the chat line ends in a map
+-- tag for it ([gps=...]: a pin the player clicks to see the place), so "over here" says where. Not spoken, no bubble
 -- turn to look at pos, standing still, as a player turns their character
 local function face(m, pos)
   local e = m.entity
@@ -249,9 +252,10 @@ local function face(m, pos)
   pcall(function() e.direction = DIRS[d + 1] end)
 end
 
-local function say(m, text, how)
+local function say(m, text, how, at)
   local bank = m.bank_line
   m.bank_line = nil
+  at = at or bank and bank.text == text and bank.at
   local e = m.entity
   local c = m.color
   local p = m.owner and game.get_player(m.owner) -- (they look at you when they talk, near you)
@@ -280,14 +284,16 @@ local function say(m, text, how)
   if how == nil and bank and bank.text == text and t - (storage.voice_at or -180) >= 180 and t - (m.voice_at or -1200) >= 1200
     and player and py() and player_setting(player, "ai-crew-lines-llm") and player_setting(player, "ai-crew-voices")
     and jobs.start(player.index, "aicrew:line", helpers.table_to_json({ llm = llm_settings(player), name = m.name,
-      manner = trait(m), event = bank.event, text = text }), { kind = "line", owner = m.owner, who = m.name, text = text }) then
+      manner = trait(m), event = bank.event, text = text }), { kind = "line", owner = m.owner, who = m.name, text = text,
+      pos = at and { x = at.x, y = at.y } }) then
     storage.voice_at, m.voice_at = t, t -- (its turn to speak, kept for when the words come back)
     return
   end
-  game.print(string.format("[color=%g,%g,%g]%s:[/color] %s", c[1], c[2], c[3], m.name, text))
+  local tag = at and string.format(" [gps=%.1f,%.1f,%s]", at.x, at.y, e.surface.name) or ""
+  game.print(string.format("[color=%g,%g,%g]%s:[/color] %s", c[1], c[2], c[3], m.name, text) .. tag)
   m.lines = (m.lines or 0) + 1 -- (what reached the chat, the last few: for tests)
   m.last_lines = m.last_lines or {}
-  table.insert(m.last_lines, t .. ": " .. text)
+  table.insert(m.last_lines, t .. ": " .. text .. tag)
   if #m.last_lines > 8 then table.remove(m.last_lines, 1) end
   -- (3 s between any two voiced lines, 20 s between one member's voiced news; worded news had its turn kept)
   if how == nil and (t - (storage.voice_at or -180) < 180 or t - (m.voice_at or -1200) < 1200) then
@@ -2117,7 +2123,7 @@ local function fight(m)
     e.shooting_state = { state = defines.shooting.not_shooting, position = e.position }
     stop_mining(m)
     go(m, anchor(m), 4)
-    say(m, line(m, "hurt"))
+    say(m, line(m, "hurt", { at = e.position }))
     return
   end
   if m.defend == false and not (m.jobs[1] and m.jobs[1].kind == "attack") then m.target = nil return end
@@ -2150,7 +2156,7 @@ local function fight(m)
   if enemy and not m.target then
     if not m.said_fight or game.tick - m.said_fight > 1800 then
       m.said_fight = game.tick
-      say(m, line(m, "contact", { item = pretty(enemy.name) }))
+      say(m, line(m, "contact", { item = pretty(enemy.name), at = enemy.position }))
     end
   end
   m.target = enemy
@@ -2181,7 +2187,7 @@ local function alarm(surface, force, ent)
         m.wait_until = nil
         if game.tick - (storage.alarm_said or -3600) > 1800 then
           storage.alarm_said = game.tick
-          say(m, line(m, "alarm", { item = pretty(ent.name) }))
+          say(m, line(m, "alarm", { item = pretty(ent.name), at = pos }))
           remember(m.owner, "biters attacked the " .. pretty(ent.name) .. "; the crew went to fight them")
         end
       end
@@ -2397,7 +2403,7 @@ local function notice(m)
   for _, n in pairs(s.find_entities_filtered({ type = { "unit-spawner", "turret" }, position = e.position, radius = 32 })) do
     if e.force.is_enemy(n.force) and new(n) then
       local armed = m.defend ~= false and gun_range(m) > 0
-      say(m, line(m, armed and "nest" or "nest_unarmed", { item = pretty(n.name) }))
+      say(m, line(m, armed and "nest" or "nest_unarmed", { item = pretty(n.name), at = n.position }))
       remember(m.owner, m.name .. " found " .. a_an(n.name) .. (armed and " and went after it" or ", but had no gun"))
       if armed then m.jobs[#m.jobs + 1] = { kind = "attack", n = 0, skip = {}, center = n.position, radius = 24 } end
       return true
@@ -2419,7 +2425,7 @@ local function notice(m)
         if not remark then return false end
         kind = "dark_note"
       end
-      say(m, line(m, kind, { item = pretty(f.name) }))
+      say(m, line(m, kind, { item = pretty(f.name), at = f.position }))
       remember(m.owner, m.name .. " found " .. a_an(f.name) .. ({ dark = " with no power and ran poles to it",
         dark_note = " with no power", starved = " short of inputs", backed = " with its output backed up" })[kind])
       if kind ~= "dark" then m.remark_at = game.tick + 10800 end
@@ -2971,7 +2977,8 @@ local function canned(owner, members, ev)
   local g = storage.goals and storage.goals[owner]
   local text = ev and line(a, ev.kind, ev.vars) or g and math.random() < 0.3
     and string.format("Still on that goal: %d %s. We'll get there.", g.count, pretty(g.item)) or line(a, "idle")
-  table.insert(queued(), { at = game.tick + (ev and 90 or 0), owner = owner, who = a.name, text = text })
+  table.insert(queued(), { at = game.tick + (ev and 90 or 0), owner = owner, who = a.name, text = text,
+    pos = ev and ev.vars and ev.vars.at })
   if #members > 1 and not ev and math.random() < 0.6 then
     local b
     repeat b = pick(members) until b ~= a
@@ -3074,16 +3081,17 @@ local function find_hint(owner, surface, force, at)
   local h = {}
   -- machines round you, grouped by what's wrong with them
   local starved, backed, low, dark = {}, {}, 0, 0
+  local first = {} -- (where the first machine of each kind of trouble is: the hint points at it)
   for _, f in pairs(surface.find_entities_filtered({ type = { "assembling-machine", "furnace", "mining-drill", "lab" }, force = force,
     position = at, radius = 100 })) do
     local st = f.status
-    if st == S.low_power then low = low + 1
-    elseif st == S.no_power and not crew_built(f) then dark = dark + 1
+    if st == S.low_power then low, first.low = low + 1, first.low or f.position
+    elseif st == S.no_power and not crew_built(f) then dark, first.dark = dark + 1, first.dark or f.position
     elseif (st == S.item_ingredient_shortage or st == S.no_ingredients) and f.type == "assembling-machine" then
       local r = f.get_recipe()
       local miss = r and missing_input(f)
       if miss then
-        local g = starved[r.name] or { n = 0, miss = miss }
+        local g = starved[r.name] or { n = 0, miss = miss, at = f.position }
         g.n = g.n + 1
         starved[r.name] = g
       end
@@ -3091,19 +3099,20 @@ local function find_hint(owner, surface, force, at)
       local r = f.type == "furnace" and f.get_recipe()
       local what = r and r.name or f.mining_target and f.mining_target.name or f.name
       backed[what] = (backed[what] or 0) + 1
+      first["backed:" .. what] = first["backed:" .. what] or f.position
     end
   end
-  if low >= 3 then h[#h + 1] = { key = "power", kind = "hint_power", vars = { n = low }, text = low .. " machines are on low power" } end
+  if low >= 3 then h[#h + 1] = { key = "power", kind = "hint_power", vars = { n = low, at = first.low }, text = low .. " machines are on low power" } end
   for name, g in pairs(starved) do
     if g.n >= 3 then
-      h[#h + 1] = { key = "starved:" .. name, kind = "hint_starved", vars = { n = g.n, item = pretty(name), other = pretty(g.miss) },
+      h[#h + 1] = { key = "starved:" .. name, kind = "hint_starved", vars = { n = g.n, item = pretty(name), other = pretty(g.miss), at = g.at },
         text = g.n .. " machines making " .. pretty(name) .. " are starved of " .. pretty(g.miss) }
     end
   end
-  if dark >= 3 then h[#h + 1] = { key = "dark", kind = "hint_dark", vars = { n = dark }, text = dark .. " machines near the player have no power" } end
+  if dark >= 3 then h[#h + 1] = { key = "dark", kind = "hint_dark", vars = { n = dark, at = first.dark }, text = dark .. " machines near the player have no power" } end
   for name, n in pairs(backed) do
     if n >= 4 then
-      h[#h + 1] = { key = "backed:" .. name, kind = "hint_backed", vars = { n = n, item = pretty(name) },
+      h[#h + 1] = { key = "backed:" .. name, kind = "hint_backed", vars = { n = n, item = pretty(name), at = first["backed:" .. name] },
         text = n .. " " .. pretty(name) .. " machines are backed up, nothing takes their output" }
     end
   end
@@ -3188,12 +3197,12 @@ local function on_answer(p, out)
   local a = helpers.json_to_table(out) or { error = "unreadable answer" }
   if p.kind == "ada" then
     local text = type(a.text) == "string" and a.text ~= "" and a.text or p.text
-    game.print("[color=" .. ADA_COLOR .. "][ADA][/color] " .. text)
+    game.print("[color=" .. ADA_COLOR .. "][ADA][/color] " .. text .. (p.gps or ""))
     return speak(text, "ada")
   end
   if p.kind == "line" then -- (a bank line in the member's own words; the bank's own when the AI can't)
     local m = crew()[p.who]
-    if m and m.entity.valid then say(m, type(a.text) == "string" and a.text ~= "" and a.text:sub(1, 200) or p.text, "worded") end
+    if m and m.entity.valid then say(m, type(a.text) == "string" and a.text ~= "" and a.text:sub(1, 200) or p.text, "worded", p.pos) end
     return
   end
   if p.kind == "check" then
@@ -3208,7 +3217,8 @@ local function on_answer(p, out)
     for _, r in pairs(type(a.replies) == "table" and a.replies or {}) do
       if type(r) == "table" and type(r.text) == "string" and r.text ~= "" then
         local m = find_member(r.who, p.owner) or members[1]
-        table.insert(queued(), { at = at, owner = p.owner, who = m.name, text = r.text:sub(1, 200) })
+        table.insert(queued(), { at = at, owner = p.owner, who = m.name, text = r.text:sub(1, 200),
+          pos = at == game.tick and p.ev and p.ev.vars and p.ev.vars.at or nil })
         at = at + 300
       end
     end
@@ -4138,7 +4148,7 @@ script.on_event(defines.events.on_tick, function(ev)
       if t >= l.at then
         table.remove(lines, i)
         local m = find_member(l.who, l.owner)
-        if m then say(m, l.text, "talk") end
+        if m then say(m, l.text, "talk", l.pos) end
       end
     end
   end
@@ -4293,7 +4303,7 @@ script.on_event(defines.events.on_entity_died, function(ev)
       storage.fallen[name] = { at = ev.tick + 3600, owner = m.owner, home = m.home, surface = m.entity.surface.name,
         force = m.entity.force.name, auto = m.auto, defend = m.defend, follow = m.follow, roam = m.roam,
         stats = { kills = m.kills, built = m.built, deaths = (m.deaths or 0) + 1, rides = m.rides, flights = m.flights } }
-      ada("crew_down", { name = name })
+      ada("crew_down", { name = name, at = m.entity.position, surface = m.entity.surface.name })
       react(m.owner, "down", name .. " was killed" .. (ev.cause and ev.cause.valid and (" by a " .. pretty(ev.cause.name)) or ""),
         { other = name }, name)
     end

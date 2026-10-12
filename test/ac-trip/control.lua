@@ -62,6 +62,12 @@ script.on_event(defines.events.on_tick, function(ev)
       check(string.format("came back where it stood (at t=%s)", tostring(storage.back)), storage.back ~= nil)
       check("hurt, fell back home (at t=" .. tostring(storage.fell_back) .. ")", storage.fell_back ~= nil)
       check(string.format("healed, came back again (at t=%s, %.0f tiles from it)", tostring(storage.back2), d), storage.back2 ~= nil)
+      local hurt_line -- (said where it was hit: the chat line has a map tag for the place)
+      for _, l in ipairs(remote.call("ai-crew", "status", "Rook").last_lines or {}) do
+        if l:find("[gps=", 1, true) then hurt_line = l end
+      end
+      log("  " .. tostring(hurt_line))
+      check("a line about a place has a map tag for it", hurt_line ~= nil)
       local fails = 0
       for _, k in ipairs(checks) do log((k[2] and "PASS " or "FAIL ") .. k[1]) if not k[2] then fails = fails + 1 end end
       log(fails == 0 and "ALL PASS" or (fails .. " FAILED"))

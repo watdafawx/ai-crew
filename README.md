@@ -152,7 +152,8 @@ with their own stock lines, and goes through all of them before one comes round 
 own (built 12, made 10 plates for the goal) is only a bubble over their head; news (a shortage, a nest, being hurt,
 the job you gave them done) goes to chat and is spoken, but only one voice every 3 seconds and one member's news
 aloud at most every 20 seconds; any line a member said in the last 5 minutes, or a teammate said in the last minute,
-is only a bubble. Answers to you are always spoken. The stock lines are in `lines.lua` (several per manner for each
+is only a bubble. Answers to you are always spoken. A line about a place (a nest, a dark or starved machine, an
+attack, where they got hurt, a hint, a crew member down) ends in a map pin in chat: click it to see where "over here" is. The stock lines are in `lines.lua` (several per manner for each
 kind of news). With "Crew word their lines with the AI" on (the default; the window's gear, voices) and an AI that
 answers, a line about to be spoken goes to the AI first and is said in that member's own words, the same facts; one
 request per spoken line, and the stock line when the AI can't.
