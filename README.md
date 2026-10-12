@@ -19,7 +19,7 @@ The crew window follows the theme each player picks in [FSE std](https://github.
    "AI Crew". That's all for the crew's work, goals and combat.
 2. For chat, voices and ADA: [FSE](https://github.com/watdafawx/fse) (unzip it into the game's
    folder), and add this folder to `FSE_PYPATH` in `fse\fse.env` there (`aicrew.py` is
-   loaded from there). Natural voices: `uv pip install --system edge-tts kokoro-onnx`; ADA's effects: ffmpeg (`winget install Gyan.FFmpeg`).
+   loaded from there). Voices: `uv pip install --system kokoro-onnx`; ADA's effects: ffmpeg (`winget install Gyan.FFmpeg`).
 3. For production lines in goals: [bpgen](https://github.com/watdafawx/bpgen) (its in-game mod and FSE).
 
 ## The window
@@ -196,20 +196,19 @@ window's settings (the gear by its close button; Save & test tells you at once w
 Or set `OPENROUTER_API_KEY` (etc.) before starting the game. The Model setting overrides the pick.
 
 Voices: the crew speak in [Kokoro](https://github.com/thewh1teagle/kokoro-onnx)'s voices, run on your own computer
-(`uv pip install --system kokoro-onnx`), each member their own (British and American, men and women). Until Kokoro's
-model is there (below), or without it, edge-tts' online voices speak (`uv pip install --system edge-tts`), else
-Windows' built-in ones. Toggle crew voices, "Crew word their lines with the AI", ADA, and "ADA words her lines with
-the AI" per player.
+(`uv pip install --system kokoro-onnx`), each member their own (British and American, men and women). Without
+Kokoro, or until its model is there (below), lines are only in chat. Toggle crew voices, "Crew word their lines with
+the AI", ADA, and "ADA words her lines with the AI" per player.
 
 ADA's voice: Satisfactory's ADA is, by the community's ear, Google's WaveNet `en-US-Wavenet-C` with a multi-voice
-chorus and a doubled, slightly detuned echo. Here a neural voice (pick it in Settings; **Hear** plays a line) goes
+chorus and a doubled, slightly detuned echo. Here a Kokoro voice (pick it in Settings; **Hear** plays a line) goes
 through the same effects with ffmpeg when it's installed (`winget install Gyan.FFmpeg`). A short chime plays before
 each line: a synthesized one (two rising bell tones with an echo), or your own `ada-chime.wav` put next to `aicrew.py`.
 
-ADA's default voice, **heart**, runs on your own computer: [Kokoro](https://github.com/thewh1teagle/kokoro-onnx)'s
-`af_heart` (`uv pip install --system kokoro-onnx`). Its model (~350 MB) downloads once, on the first spoken line, into
-`%LOCALAPPDATA%\ai-crew\kokoro`; she speaks as Ava until it's there. The others (ava, jenny, aria, emma, michelle) are
-edge-tts' online voices.
+ADA's voices are Kokoro's too: **heart** (the default), sarah, nova, sky, and the British alice and lily. Kokoro's
+model (~350 MB) downloads once, on the first spoken line, into `%LOCALAPPDATA%\ai-crew\kokoro`. What she says comes
+from her own lines in `lines.lua` (several for each announcement: goals, research, first products, rockets, deaths,
+new crew), never the same one twice in a row, and with "ADA words her lines with the AI" the AI rewords them.
 
 ADA speaks on: research finished, research queue empty, first of each science pack produced, rocket launched, your
 death, crew hired or lost.

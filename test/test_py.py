@@ -27,9 +27,8 @@ assert aicrew.choose_model("openrouter", ["x/gemma-4-31b-it:free", "y/z:free"], 
 assert aicrew.extract_json('Sure!\n```json\n{"replies": [], "jobs": [{"kind": "build"}]}\n```') == {"replies": [], "jobs": [{"kind": "build"}]}
 assert aicrew.extract_json("<think>{nope}</think> {bad {\"a\": 1}") == {"a": 1}
 assert aicrew.extract_json("no json") is None
-assert aicrew.voice_for("ada:jenny") == "en-US-JennyNeural"
-assert aicrew.voice_for("ada") == "en-US-AvaNeural" and aicrew.voice_for(9) == aicrew.CREW_VOICES[1]
-assert aicrew.voice_for("ada:heart") == "en-US-AvaNeural"  # (Kokoro's, locally; Ava when it can't)
+assert aicrew.kokoro_voice_for("ada") == aicrew.kokoro_voice_for("ada:heart") == ("af_heart", "en-us")
+assert aicrew.kokoro_voice_for("ada:alice") == ("bf_alice", "en-gb") and aicrew.kokoro_voice_for("ada:jenny")[0] == "af_heart"
 assert aicrew.kokoro_voice_for(9) == aicrew.KOKORO_CREW[1] == ("af_bella", "en-us") and aicrew.kokoro_voice_for(None)[0] == "bm_george"
 
 # ask() with a faked model reply: plain text falls back to a spoken reply, JSON passes through

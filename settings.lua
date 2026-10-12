@@ -10,7 +10,7 @@ data:extend({
   { type = "bool-setting", name = "ai-crew-lines-llm", setting_type = "runtime-per-user", default_value = true, order = "d2" },
   { type = "bool-setting", name = "ai-crew-ada", setting_type = "runtime-per-user", default_value = true, order = "e" },
   { type = "string-setting", name = "ai-crew-ada-voice", setting_type = "runtime-per-user", default_value = "heart",
-    allowed_values = { "heart", "ava", "jenny", "aria", "emma", "michelle" }, order = "e2" },
+    allowed_values = { "heart", "sarah", "nova", "sky", "alice", "lily" }, order = "e2" },
   { type = "bool-setting", name = "ai-crew-chatter", setting_type = "runtime-per-user", default_value = true, order = "g" },
   { type = "bool-setting", name = "ai-crew-hints", setting_type = "runtime-per-user", default_value = true, order = "h2" },
   { type = "bool-setting", name = "ai-crew-jetpack", setting_type = "runtime-per-user", default_value = true, order = "h" },

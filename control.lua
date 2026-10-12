@@ -155,7 +155,21 @@ local function llm_settings(player)
     model = player_setting(player, "ai-crew-model") }
 end
 
-local function ada(text)
+-- ADA announces: an event of lines.lua's ada (one of its lines, not one said since it last went through them all,
+-- vars filled in), or plain text
+local function ada(text, vars)
+  local set = LINES.ada[text]
+  if set then
+    storage.ada_said = storage.ada_said or {}
+    local used = storage.ada_said[text] or {}
+    local fresh = {}
+    for _, l in ipairs(set) do if not used[l] then fresh[#fresh + 1] = l end end
+    if #fresh == 0 then used, fresh = {}, set end
+    local l = pick(fresh)
+    used[l] = true
+    storage.ada_said[text] = used
+    text = l:gsub("{(%w+)}", function(k) return vars and vars[k] ~= nil and tostring(vars[k]) or "" end)
+  end
   local p = any_player()
   if p and not player_setting(p, "ai-crew-ada") then return end
   if p and py() and player_setting(p, "ai-crew-ada-llm") then
@@ -2301,7 +2315,7 @@ local function goal_step(m)
   if have >= g.count then
     if not is_need then
       goals()[key] = nil
-      ada("Goal reached: " .. g.count .. " " .. pretty(g.item) .. ". Well done, pioneer.")
+      ada("goal", { n = g.count, item = pretty(g.item) })
       react(m.owner, "goal", "goal reached: " .. g.count .. " " .. pretty(g.item), { item = pretty(g.item) })
       return
     end
@@ -2846,7 +2860,7 @@ local function order(owner, text)
     local name = rest:match("^%S+%s+(%S+)")
     local m, err = hire(name and (name:sub(1, 1):upper() .. name:sub(2)), c.surface, c.position, c.force, owner)
     if not m then return tell(player, err) end
-    ada("New crew member registered: " .. m.name .. ".")
+    ada("hired", { name = m.name })
     remember(owner, m.name .. " joined the crew")
     return say(m, line(m, "hello"), "talk")
   elseif all and (verb == "fire" or verb == "dismiss") then
@@ -3231,7 +3245,7 @@ local theme = fstd and (function()
 end)()
 local WIN = "aic_window"
 local PROVIDER_CHOICES, TOGGLES
-local ADA_VOICES = { "heart", "ava", "jenny", "aria", "emma", "michelle" }
+local ADA_VOICES = { "heart", "sarah", "nova", "sky", "alice", "lily" } -- (aicrew.py's ADA_VOICES: Kokoro's)
 
 local function goal_text(owner)
   local nd = needs(owner)[1]
@@ -3290,7 +3304,7 @@ end
 
 PROVIDER_CHOICES = { "auto", "openrouter", "groq", "gemini", "cerebras", "mistral", "pollinations", "ollama", "off" }
 TOGGLES = {
-  { "voices", "Crew speak out loud", "Text to speech for the crew's lines (Kokoro's local voices, else edge-tts, else Windows')" },
+  { "voices", "Crew speak out loud", "Text to speech for the crew's lines: Kokoro's voices, made on your computer" },
   { "ada", "ADA announces milestones", "Research done, first science, rocket launches, deaths" },
   { "ada-llm", "ADA words her lines with the AI", "One AI request per announcement" },
   { "lines-llm", "Crew word their lines with the AI", "Their news (biters, a nest, research, fishing...) in their own words: one AI request per line said out loud. Without an AI that answers, the stock lines" },
@@ -3652,7 +3666,7 @@ local function act(player, action, who, scripted)
     local vi = 1
     for i, v in ipairs(ADA_VOICES) do if v == cur_v then vi = i end end
     r.add({ type = "drop-down", name = "aic_set_ada_voice", items = ADA_VOICES, selected_index = vi,
-      tooltip = "A neural voice under ADA's effects (chorus and a detuned echo). Needs edge-tts; the effects need ffmpeg." })
+      tooltip = "ADA's Kokoro voice (alice and lily British) under her effects (chorus and a detuned echo; they need ffmpeg)" })
     btn(r, "Hear", "ada_hear", nil, "ADA says a line in this voice", 60).enabled = py()
     local own = theme.fold(scroll, "What the crew do", false)
     for i, c in ipairs(TOGGLES) do
@@ -3963,7 +3977,7 @@ local function science_check(silent)
     for _, name in ipairs(SCIENCE) do
       if not storage.seen[name] and (stats[name] or 0) > 0 then
         storage.seen[name] = true
-        if not silent then ada("Production milestone: first " .. pretty(name) .. " produced. Well done, pioneer.") end
+        if not silent then ada("first", { item = pretty(name) }) end
       end
     end
   end
@@ -4169,7 +4183,7 @@ script.on_event(defines.events.on_tick, function(ev)
   if storage.queue_check and t >= storage.queue_check then
     storage.queue_check = nil
     local f = game.forces.player
-    if f and not f.current_research and #f.research_queue == 0 then ada("Research queue empty. Awaiting your input, pioneer.") end
+    if f and not f.current_research and #f.research_queue == 0 then ada("queue_empty") end
   end
 end)
 
@@ -4232,7 +4246,7 @@ script.on_event({ defines.events.on_built_entity, defines.events.on_player_craft
 script.on_event(defines.events.on_research_finished, function(ev)
   for _, p in pairs(ev.research.force.players) do progress(p.index) end
   if ev.by_script then return end
-  ada("Research complete: " .. pretty(ev.research.name) .. ".")
+  ada("research", { item = pretty(ev.research.name) })
   for _, p in pairs(ev.research.force.connected_players) do
     react(p.index, "research", "research done: " .. pretty(ev.research.name), { item = pretty(ev.research.name) })
   end
@@ -4240,11 +4254,11 @@ script.on_event(defines.events.on_research_finished, function(ev)
 end)
 
 script.on_event(defines.events.on_rocket_launched, function()
-  ada("Rocket launch confirmed. Excellent work, pioneer.")
+  ada("rocket")
 end)
 
 script.on_event(defines.events.on_player_died, function()
-  ada("Pioneer vital signs lost. Initiating respawn protocol.")
+  ada("died")
 end)
 
 script.on_event(defines.events.on_entity_died, function(ev)
@@ -4261,7 +4275,7 @@ script.on_event(defines.events.on_entity_died, function(ev)
       storage.fallen[name] = { at = ev.tick + 3600, owner = m.owner, home = m.home, surface = m.entity.surface.name,
         force = m.entity.force.name, auto = m.auto, defend = m.defend, follow = m.follow, roam = m.roam,
         stats = { kills = m.kills, built = m.built, deaths = (m.deaths or 0) + 1, rides = m.rides, flights = m.flights } }
-      ada("Crew member " .. name .. " is down. Reconstruction in sixty seconds.")
+      ada("crew_down", { name = name })
       react(m.owner, "down", name .. " was killed" .. (ev.cause and ev.cause.valid and (" by a " .. pretty(ev.cause.name)) or ""),
         { other = name }, name)
     end

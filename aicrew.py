@@ -9,8 +9,7 @@ Lua calls (strings in, JSON strings out):
   aicrew:speak  {text, voice}   queued and spoken on a thread; returns at once
 
 Every provider speaks the OpenAI chat API. Keys are free to get (see NO_KEY); Ollama needs none.
-Voices: Kokoro on this computer (uv pip install kokoro-onnx; ADA's "heart" and one voice per crew member), else
-edge-tts when installed (uv pip install edge-tts), else Windows' own SAPI voices.
+Voices: Kokoro on this computer (uv pip install kokoro-onnx): one per crew member, and ADA's (heart unless picked).
 """
 import json
 import os
@@ -280,14 +279,10 @@ def check(s):
     llm = req.get("llm") or {}
     try:
         import kokoro_onnx  # noqa: F401
-        tts = "Kokoro (local): the crew and ADA's heart voice"
+        tts = "Kokoro (local)" + ("" if all(os.path.exists(os.path.join(KOKORO_DIR, f)) for f in KOKORO_FILES)
+                                  else ": its model downloads on the first spoken line")
     except ImportError:
-        tts = "Kokoro: uv pip install kokoro-onnx for local voices"
-    try:
-        import edge_tts  # noqa: F401
-        tts += "; edge-tts (online) while it can't"
-    except ImportError:
-        tts += "; Windows voices while it can't (uv pip install edge-tts for natural ones)"
+        tts = "none: uv pip install kokoro-onnx (the crew and ADA speak only with it)"
     out = {"tts": tts}
     try:
         name, _, key, model = pick_provider(llm)
@@ -337,30 +332,20 @@ State: {json.dumps(ctx, separators=(",", ":"))}"""
 
 # ------------------------------------------------------------------------------------------------- text to speech
 
-EDGE_VOICES = {"ada": "en-US-AvaNeural"}
-CREW_VOICES = ["en-GB-RyanNeural", "en-US-JennyNeural", "en-GB-SoniaNeural", "en-US-GuyNeural", "en-AU-NatashaNeural",
-               "en-US-AndrewNeural", "en-IE-EmilyNeural", "en-AU-WilliamNeural"]
-# the same members in Kokoro's voices (local), each like its edge-tts one: (voice, its accent)
+# Every voice is Kokoro's, made on this computer: (voice, its accent). The crew by voice number; ADA's picked in game
+# (settings.lua's ai-crew-ada-voice), heart by default
 KOKORO_CREW = [("bm_george", "en-gb"), ("af_bella", "en-us"), ("bf_emma", "en-gb"), ("am_michael", "en-us"),
                ("af_nicole", "en-us"), ("am_adam", "en-us"), ("bf_isabella", "en-gb"), ("bm_lewis", "en-gb")]
+ADA_VOICES = {"heart": ("af_heart", "en-us"), "sarah": ("af_sarah", "en-us"), "nova": ("af_nova", "en-us"),
+              "sky": ("af_sky", "en-us"), "alice": ("bf_alice", "en-gb"), "lily": ("bf_lily", "en-gb")}
 _queue = queue.Queue()
 _worker = None
-_sapi = None
-
-
-def voice_for(voice):
-    if isinstance(voice, str) and voice.startswith("ada:") and voice != "ada:heart":  # (picked in game: ava, jenny, ...)
-        return "en-US-" + voice[4:].capitalize() + "Neural"
-    if str(voice).startswith("ada"):  # (heart is local, Kokoro: Ava when it can't speak)
-        return EDGE_VOICES["ada"]
-    try:
-        return CREW_VOICES[int(voice) % len(CREW_VOICES)]
-    except (TypeError, ValueError):
-        return CREW_VOICES[0]
 
 
 def kokoro_voice_for(voice):
-    """(Kokoro voice, accent) for a crew member's voice number"""
+    """(Kokoro voice, accent) for a crew member's voice number, or ADA's ("ada" or "ada:<name>")"""
+    if str(voice).startswith("ada"):
+        return ADA_VOICES.get(str(voice)[4:], ADA_VOICES["heart"])
     try:
         return KOKORO_CREW[int(voice) % len(KOKORO_CREW)]
     except (TypeError, ValueError):
@@ -375,23 +360,9 @@ def _play_mp3(path):
     mci("close aicrew", None, 0, None)
 
 
-def _say_sapi(text, female):
-    """Windows' built-in voices, through one PowerShell kept open (text goes over stdin, never the command line)"""
-    global _sapi
-    if _sapi is None or _sapi.poll() is not None:
-        script = ("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-                  "while (($l = [Console]::In.ReadLine()) -ne $null) { $g, $t = $l.Split('|', 2); "
-                  "try { $s.SelectVoiceByHints($(if ($g -eq 'f') { 'Female' } else { 'Male' })) } catch {}; $s.Speak($t) }")
-        _sapi = subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                                 stdin=subprocess.PIPE, text=True, encoding="utf-8",
-                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    _sapi.stdin.write(("f" if female else "m") + "|" + " ".join(text.split()) + "\n")
-    _sapi.stdin.flush()
-
-
 # ADA (Satisfactory) is, by the community's ear, Google's WaveNet en-US-Wavenet-C with a multi-voice chorus and a
 # doubled, slightly detuned echo (satisfactory.guru's recipe: chorus speed 1.9 depth 2.9; 2 echoes at -18.7 dB, 0 s,
-# -0.12 semitones each). Here: a neural edge-tts voice through the same effects in ffmpeg, when ffmpeg is installed.
+# -0.12 semitones each). Here: her Kokoro voice through the same effects in ffmpeg, when ffmpeg is installed.
 ADA_FILTER = ("[0:a]asplit=3[a][b][c];"
               "[b]asetrate=24000*0.993092,aresample=24000,volume=0.116[b2];"   # one echo: -0.12 st, -18.7 dB
               "[c]asetrate=24000*0.986233,aresample=24000,volume=0.116[c2];"   # the second: -0.24 st
@@ -416,8 +387,8 @@ def _ada_fx(path, dest=None):
     return True
 
 
-# Kokoro, run on this computer (uv pip install kokoro-onnx): ADA's "heart" voice (af_heart) and the crew's. Its model
-# (~350 MB) is fetched once into KOKORO_DIR on a thread; edge-tts or Windows' voices speak until it's there.
+# Kokoro, run on this computer (uv pip install kokoro-onnx): ADA's voice and the crew's. Its model (~350 MB) is fetched
+# once into KOKORO_DIR on a thread; lines said before it's there (or without kokoro-onnx) are only in chat.
 KOKORO_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/"
 KOKORO_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir(), "ai-crew", "kokoro")
 KOKORO_FILES = ("kokoro-v1.0.onnx", "voices-v1.0.bin")
@@ -433,7 +404,7 @@ def _fetch_kokoro():
             try:
                 urllib.request.urlretrieve(KOKORO_URL + f, path + ".part")
                 os.replace(path + ".part", path)
-            except Exception as e:  # noqa: BLE001 - tried again on ADA's next line
+            except Exception as e:  # noqa: BLE001 - tried again on the next spoken line
                 print(f"[aicrew] kokoro download: {e}")
                 return
 
@@ -453,13 +424,13 @@ def kokoro_model():
 
 
 def _say_kokoro(text, voice="af_heart", lang="en-us", ada=True):
-    """text in a Kokoro voice (ADA's heart one with her effects); False when Kokoro can't (yet): another voice speaks"""
+    """text in a Kokoro voice (ADA's with her effects); False when Kokoro can't (yet): the line stays unspoken"""
     try:
         k = kokoro_model()
         if not k:
             return False
         samples, rate = k.create(text, voice=voice, speed=0.95 if ada else 1.05, lang=lang)
-    except Exception as e:  # noqa: BLE001 - not installed, or a broken model: Ava instead
+    except Exception as e:  # noqa: BLE001 - not installed, or a broken model
         if not isinstance(e, ImportError):
             print(f"[aicrew] kokoro: {e}")
         return False
@@ -528,35 +499,13 @@ def _play_chime():
 
 
 def _say(text, voice):
-    name = voice_for(voice)
-    if isinstance(voice, str) and voice.startswith("ada"):
+    ada = str(voice).startswith("ada")
+    if ada:
         try:
             _play_chime()
         except Exception as e:  # noqa: BLE001 - no chime is fine
             print(f"[aicrew] chime: {e}")
-    if voice == "ada:heart" and _say_kokoro(text):
-        return
-    if not str(voice).startswith("ada") and _say_kokoro(text, *kokoro_voice_for(voice), ada=False):
-        return
-    try:
-        import asyncio
-        import edge_tts
-    except ImportError:
-        return _say_sapi(text, str(voice).startswith("ada") or any(w in name for w in ("Jenny", "Sonia", "Natasha", "Emily", "Ava")))
-    fd, path = tempfile.mkstemp(suffix=".mp3", prefix="aicrew-")
-    os.close(fd)
-    try:
-        ada = isinstance(voice, str) and voice.startswith("ada")
-        try:
-            asyncio.run(edge_tts.Communicate(text, name, rate="-3%" if ada else "+4%").save(path))
-        except Exception as e:  # noqa: BLE001 - the online voice failed (503s happen): Windows' own voice instead
-            print(f"[aicrew] edge-tts: {e}; Windows voice instead")
-            return _say_sapi(text, ada or any(w in name for w in ("Jenny", "Sonia", "Natasha", "Emily", "Ava")))
-        if ada:
-            _ada_fx(path)
-        _play_mp3(path)
-    finally:
-        os.unlink(path)
+    _say_kokoro(text, *kokoro_voice_for(voice), ada=ada)
 
 
 def _run():
