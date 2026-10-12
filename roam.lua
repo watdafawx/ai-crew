@@ -4,7 +4,7 @@
 -- (the other files' that this one uses: set by link, at the end)
 local a_an, any_player, available, canned, chatter, CREW, crew_built, dist2, gather, go, goals, gun_range,
   handcraft_recipe, in_box, kept_out, key_of, line, llm_settings, members_of, needs, owner_char, player_setting,
-  power_to, pretty, product_amount, py, remember, ROAM, say, spot, upgrade_item
+  power_to, pretty, product_amount, py, RADIUS, remember, ROAM, say, spot, upgrade_item
 
 -- --------------------------------------------------------------------------------------------------------- roaming
 -- Roam: instead of following, each one wanders the area round the player (or home) on its own, stops a while to look
@@ -40,10 +40,83 @@ end
 
 -- a better tier for what it walks past (setting "Crew upgrade to better tiers"): your machines, inserters, furnaces
 -- whose next tier is in stock already (pockets, chests, belts, network: never made for it) get the upgrade mark, a few
--- a look and no more than there are items, and the upgrade job does the rest (recipe, contents, direction kept). Never
--- belts (a partly upgraded belt only holds the rest back), nor in a keep-out place or a bpgen line. Its own marks are
--- kept in storage.tier_marks (unit number -> entity): one it can't carry out after all it takes back (next_upgrade)
+-- a look and no more than there are items, and the upgrade job does the rest (recipe, contents, direction kept). Not
+-- in a keep-out place or a bpgen line. Belts only a whole run at once (belt_run: a partly upgraded belt only holds the
+-- rest back). Its own marks are kept in storage.tier_marks (unit number -> entity): one it can't carry out after all
+-- it takes back (next_upgrade)
 local tier_names -- (prototypes with a next tier, belts aside: once a session)
+local BELT = { ["transport-belt"] = true, ["underground-belt"] = true, splitter = true }
+local BELTS = { "transport-belt", "underground-belt", "splitter" }
+
+-- a belt run: one belt with a next tier near it and all it connects to (belt_neighbours both ways, an underground's
+-- other end, a splitter's both sides) of the same tier; a piece of another tier, a loader or a linked belt ends it.
+-- All of it marked at once when every piece's item is in stock, else none of it; none either with a piece marked
+-- already (your planner's: yours to finish), in a keep-out place or a bpgen line, out past the work area, or more
+-- than 2000 pieces. One run a look; one turned down isn't looked at again for 2 minutes (storage.tier_runs: unit
+-- number -> tick). How many it marked
+local function belt_run(m, boxes, stock, tm)
+  local e = m.entity
+  local s, t = e.surface, game.tick
+  local no = storage.tier_runs or {}
+  storage.tier_runs = no
+  if table_size(no) > 4000 then for k, u in pairs(no) do if u <= t then no[k] = nil end end end
+  local f
+  for _, b in pairs(s.find_entities_filtered({ type = BELTS, force = e.force, position = e.position, radius = 20,
+    limit = 60 })) do
+    if b.prototype.next_upgrade and (no[b.unit_number] or 0) <= t and not b.to_be_upgraded() then f = b break end
+  end
+  if not f then return 0 end
+  local speed, run, seen, i = f.prototype.belt_speed, { f }, { [f.unit_number] = true }, 1
+  local function add(b)
+    if b and BELT[b.type] and not seen[b.unit_number] and b.force == f.force and b.prototype.belt_speed == speed then
+      seen[b.unit_number] = true
+      run[#run + 1] = b
+    end
+  end
+  while run[i] and #run <= 2000 do
+    local b = run[i]
+    i = i + 1
+    local near = b.belt_neighbours
+    for _, x in pairs(near.inputs) do add(x) end
+    for _, x in pairs(near.outputs) do add(x) end
+    if b.type == "underground-belt" then add(b.neighbours) end
+  end
+  local need, bad, far = {}, #run > 2000, (RADIUS - 2) ^ 2
+  for _, b in ipairs(run) do
+    if bad then break end
+    local up = b.prototype.next_upgrade
+    local it = up and up.items_to_place_this and up.items_to_place_this[1]
+    bad = not it or b.to_be_upgraded() or b.to_be_deconstructed() or dist2(b.position, e.position) > far
+      or kept_out(s, b.position)
+    for _, box in ipairs(boxes) do if in_box(box, b.position, 1) then bad = true end end
+    if not bad then
+      local k = it.name .. "/" .. b.quality.name
+      need[k] = (need[k] or 0) + (it.count or 1)
+    end
+  end
+  for k, c in pairs(bad and {} or need) do if stock(k) < c then bad = true end end
+  local marked = {}
+  if not bad then
+    for _, b in ipairs(run) do
+      local to = { name = b.prototype.next_upgrade.name, quality = b.quality.name }
+      if b.order_upgrade({ target = to, force = b.force }) then
+        marked[#marked + 1] = b
+      else -- (all or nothing)
+        for _, o in ipairs(marked) do o.cancel_upgrade(o.force) end
+        marked, bad = {}, true
+        break
+      end
+    end
+  end
+  if bad then
+    for _, b in ipairs(run) do no[b.unit_number] = t + 7200 end
+    return 0
+  end
+  for _, b in ipairs(marked) do tm[b.unit_number] = b end
+  for k, c in pairs(need) do stock(k, c) end
+  return #marked
+end
+
 local function tier_up(m)
   local e = m.entity
   local on = storage.test_tiers
@@ -60,14 +133,26 @@ local function tier_up(m)
     end
     tier_names = names
   end
-  if #tier_names == 0 then return end
   storage.tier_marks = storage.tier_marks or {}
   local tm, s = storage.tier_marks, e.surface
   for k, o in pairs(tm) do if not (o.valid and o.to_be_upgraded()) then tm[k] = nil end end
   local boxes, have, n = {}, {}, 0
   for _, g in pairs(storage.goals or {}) do if g.line and g.line.box then boxes[#boxes + 1] = g.line.box end end
-  for _, f in pairs(s.find_entities_filtered({ name = tier_names, force = e.force, position = e.position,
-    radius = 20, limit = 40 })) do
+  -- what's in stock of k ("item/quality"), less what their marks already wait for; less `use` after
+  local function stock(k, use)
+    if have[k] == nil then
+      local name, q = k:match("^(.*)/([^/]*)$")
+      have[k] = e.get_main_inventory().get_item_count({ name = name, quality = q }) + available(m, name, q)
+      for _, o in pairs(tm) do
+        local oi = upgrade_item(o)
+        if oi and oi.name == name and oi.quality == q then have[k] = have[k] - oi.count end
+      end
+    end
+    have[k] = have[k] - (use or 0)
+    return have[k]
+  end
+  for _, f in pairs(#tier_names > 0 and s.find_entities_filtered({ name = tier_names, force = e.force,
+    position = e.position, radius = 20, limit = 40 }) or {}) do
     local up = f.prototype.next_upgrade
     local it = up and not f.to_be_upgraded() and not kept_out(s, f.position) and up.items_to_place_this
       and up.items_to_place_this[1]
@@ -75,21 +160,16 @@ local function tier_up(m)
     if it then
       local q = f.quality.name
       local k = it.name .. "/" .. q
-      if have[k] == nil then -- (what's in stock, less what their marks already wait for)
-        have[k] = e.get_main_inventory().get_item_count({ name = it.name, quality = q }) + available(m, it.name, q)
-        for _, o in pairs(tm) do
-          local oi = upgrade_item(o)
-          if oi and oi.name == it.name and oi.quality == q then have[k] = have[k] - oi.count end
-        end
-      end
       local to = { name = up.name, quality = q }
-      if have[k] >= (it.count or 1) and f.order_upgrade({ target = to, force = f.force }) then
-        have[k], n = have[k] - (it.count or 1), n + 1
+      if stock(k) >= (it.count or 1) and f.order_upgrade({ target = to, force = f.force }) then
+        stock(k, it.count or 1)
+        n = n + 1
         tm[f.unit_number] = f
         if n >= 3 then break end
       end
     end
   end
+  n = n + belt_run(m, boxes, stock, tm)
   if n == 0 then return end
   m.jobs[#m.jobs + 1] = { kind = "upgrade", auto = true, n = 0, skip = {}, at = { x = e.position.x, y = e.position.y } }
   return true
@@ -388,6 +468,7 @@ return {
     handcraft_recipe, in_box, kept_out, key_of, line = A.handcraft_recipe, A.in_box, A.kept_out, A.key_of, A.line
     llm_settings, members_of, needs, owner_char = A.llm_settings, A.members_of, A.needs, A.owner_char
     player_setting, power_to, pretty, product_amount = A.player_setting, A.power_to, A.pretty, A.product_amount
-    py, remember, ROAM, say, spot, upgrade_item = A.py, A.remember, A.ROAM, A.say, A.spot, A.upgrade_item
+    py, RADIUS, remember, ROAM, say = A.py, A.RADIUS, A.remember, A.ROAM, A.say
+    spot, upgrade_item = A.spot, A.upgrade_item
   end,
 }

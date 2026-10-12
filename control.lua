@@ -74,24 +74,38 @@ local A = { a_an = a_an, ACKS = ACKS, ADA_COLOR = ADA_COLOR, ALIASES = ALIASES, 
   NAMES = NAMES, pick = pick, pretty = pretty, RADIUS = RADIUS, ROAM = ROAM, TRAIT_ORDER = TRAIT_ORDER,
   TRAITS = TRAITS }
 local JOBS = {} -- kind -> function(m, job): true when done (work.lua's, plan.lua's, fight.lua's)
-local FILES = { require("voice"), require("plan"), require("move"), require("work"), require("fight"), require("roam"),
-  require("orders"), require("window") }
+local FILE_NAMES = { "voice", "plan", "move", "work", "fight", "roam", "orders", "window" }
+local FILES = {}
+for i, name in ipairs(FILE_NAMES) do FILES[i] = require(name) end
 for _, f in ipairs(FILES) do
   for k, v in pairs(f.share) do A[k] = v end
   for k, v in pairs(f.JOBS or {}) do JOBS[k] = v end
 end
-for _, f in ipairs(FILES) do f.link(A) end
+-- while the links run (and control.lua takes its own below), a name nobody shares is a bug: fail now, naming the
+-- file that wanted it, not with a nil call some day (fstd and theme: nil without fse-std). test_py.py checks too.
+local linking
+setmetatable(A, { __index = function(_, k)
+  if k == "fstd" or k == "theme" then return end
+  error("ai-crew: " .. linking .. " imports " .. k .. ", which no file shares", 2)
+end })
+for i, f in ipairs(FILES) do
+  linking = FILE_NAMES[i] .. ".lua"
+  f.link(A)
+end
+linking = "control.lua"
 local act, ada, add_button, add_need, ai_state, alarm = A.act, A.ada, A.add_button, A.add_need, A.ai_state, A.alarm
 local anchor, any_player, available, build_panel = A.anchor, A.any_player, A.available, A.build_panel
 local chatter, check_ai, face, fight, find_member = A.chatter, A.check_ai, A.face, A.fight, A.find_member
 local flight, fly, forget_caches, fstd, fuel_available = A.flight, A.fly, A.forget_caches, A.fstd, A.fuel_available
 local go, goal_step, goals, gun_range, hear, hint = A.go, A.goal_step, A.goals, A.gun_range, A.hear, A.hint
 local hire, hover, JET, jobs, line, llm_settings = A.hire, A.hover, A.JET, A.jobs, A.line, A.llm_settings
+local match_owner = A.match_owner
 local low_burners, map_marker, members_of, mod_gui = A.low_burners, A.map_marker, A.members_of, A.mod_gui
 local nearest_source, open_frame, order, owner_char = A.nearest_source, A.open_frame, A.order, A.owner_char
 local plan, player_setting, players_stuff, progress = A.plan, A.player_setting, A.players_stuff, A.progress
 local propose, py, queued, react, refresh, riding = A.propose, A.py, A.queued, A.react, A.refresh, A.riding
 local roam, say, spot, stop_mining, theme, ui, walk = A.roam, A.say, A.spot, A.stop_mining, A.theme, A.ui, A.walk
+setmetatable(A, nil)
 
 -- -------------------------------------------------------------------------------------------------------------- think
 
@@ -148,6 +162,10 @@ local function idle(m)
       end
     end
     if goal_step(m) then return end
+    if m.kept then -- (what it kept for a next step, none coming: to you now)
+      m.kept = nil
+      if not m.entity.get_main_inventory().is_empty() then m.jobs[1] = { kind = "deliver" } return end
+    end
     local at = m.trip_from -- (nothing more to do: back from a trip)
     m.trip_from = nil
     if at and not (m.roam or m.follow and owner_char(m)) and dist2(m.entity.position, at) > 16 * 16 then
@@ -182,21 +200,27 @@ local function think(m)
     return
   end
   local job = m.jobs[1]
-  if not job then
-    idle(m)
-    local j = m.jobs[1]
-    if j and (j.auto or j.goal) and not m.trip_from then m.trip_from = { x = m.entity.position.x, y = m.entity.position.y } end
-    return
-  end
-  if job.kind ~= "mine" and m.mining then stop_mining(m) end
-  local ok, done = pcall(JOBS[job.kind], m, job)
-  if not ok then
-    log("[ai-crew] " .. m.name .. " " .. job.kind .. ": " .. tostring(done))
-    done = true
-  end
-  if done then
+  if job then
+    if job.kind ~= "mine" and m.mining then stop_mining(m) end
+    local ok, done = pcall(JOBS[job.kind], m, job)
+    if not ok then
+      log("[ai-crew] " .. m.name .. " " .. job.kind .. ": " .. tostring(done))
+      done = true
+    end
+    if not done then return end
     for i, j in ipairs(m.jobs) do if j == job then table.remove(m.jobs, i) break end end
+    if storage.have_cache then storage.have_cache[m.owner or 0] = nil end -- (what they have counted afresh: goal_have)
     if job.goal and (job.n or 0) == 0 then m.goal_wait = game.tick + 600 end -- a goal step that got nowhere: wait
+    -- a step towards a need or the goal: what it got is kept for the next (JOBS.deliver). The queue empty: the next
+    -- thing to do looked for now, before any following (not off to you and back between steps)
+    if job.goal and m.jobs[1] and m.jobs[1].kind == "deliver" then m.jobs[1].step = true end
+    if m.jobs[1] or m.visits and m.visits[1] then return end
+    m.next_scan = game.tick
+  end
+  idle(m)
+  local j = m.jobs[1]
+  if j and (j.auto or j.goal) and not m.trip_from then
+    m.trip_from = { x = m.entity.position.x, y = m.entity.position.y }
   end
 end
 
@@ -356,6 +380,7 @@ script.on_event(defines.events.on_tick, function(ev)
       if (t + m.phase) % 10 == 0 and not m.fly and (not m.move or (war and (t + m.phase) % 60 == 0)) and not m.retreat then think(m) end
       if m.retreat and not m.move and (t + m.phase) % 60 == 0 then go(m, anchor(m), 4) end
       if (t + m.phase) % 30 == 7 and not m.move and not e.vehicle then yield_to_bots(m) end
+      if (t + m.phase) % 300 == 11 then match_owner(m) end -- (your reach and speeds, kept current)
     end
   end
   if t % 5 == 0 and next(jobs.running) then
@@ -562,11 +587,13 @@ remote.add_interface("ai-crew", {
   test_back_after_orders = function(on) storage.test_back_after_orders = on end, -- (tests: "Back where they stood...")
   test_tiers = function(on) storage.test_tiers = on end, -- (tests: "Crew upgrade to better tiers")
   test_char = function(c) storage.test_char = c end, -- (tests: a character standing in for the player's, when hit)
+  test_owner = function(c) storage.test_owner = c end, -- (tests: a character standing in for an owner's, no player)
   -- (tests) plan()'s next job for n of item, no far search skipped; its kind, or why none
   test_plan = function(name, item, n)
     local m = crew()[name]
-    m.far_skip = nil
-    local job, why = plan(m, item, n)
+    m.far_skip, m.far_scan = nil, nil
+    local job, why
+    repeat job, why = plan(m, item, n) until job ~= "scan" -- (the far search a slice a call: all of it now)
     return job and job.kind or why
   end,
   -- (tests) a button of the window pressed

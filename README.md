@@ -135,8 +135,10 @@ poles are all it takes; with **Auto** on), and mentions machines starved of inpu
 minutes). It still builds, clears and works on the goal like everyone else, and catches up when you walk off. Round
 where it walks it also carries out the upgrade planner's marks (out past the 48 tiles round you), swaps your
 machines, inserters and furnaces for the next tier when that item is already in your pockets, chests, belts or network
-(a few a look, never crafted or mined for it, never belts: a partly upgraded belt only holds the rest back; setting
-"Crew upgrade to better tiers", on by default), and every 3 to 5 minutes hand-crafts a few (5 to 10) of what the base
+(a few a look, never crafted or mined for it; belts only a whole connected run at once, belts, undergrounds and
+splitters of one tier, when every piece of it is in stock: a partly upgraded belt only holds the rest back. Not a run
+you've marked part of yourself, nor one in a keep-out place or a bpgen line; setting "Crew upgrade to better tiers",
+on by default), and every 3 to 5 minutes hand-crafts a few (5 to 10) of what the base
 uses more of than it makes, from what's at hand (the belts where it stands too, only what the batch takes), brought to
 you after. **Roam is how a new crew member starts** (setting "New crew start out": roam, follow or stay; the window's
 gear, "What the crew do").
@@ -186,7 +188,17 @@ them; not a bpgen line's belts) and the logistic network you stand in. What they
 next few they took along on the first trip); for a ghost or an upgrade the trip comes before the walk to it. The
 logistic network still hands items over directly, as if bots brought them. What's left in their pockets after
 building they bring to you. Standing still on a ghost your construction robots can reach, they step off it so the
-robots can build. Everything but the chat works without fse.
+robots can build. A build or upgrade takes what all its marks need at the start, in one go (a share of it when more
+of the crew are about, a stack at most): one trip over for it, not one per mark. Its area is round where you were
+when it started, so you walking off doesn't pull them back and forth. Following you, they stop following while
+they have work and come back to you once it's all done; steps towards a need or the goal keep what they got for
+the next step instead of bringing it over between steps. Everything but the chat works without fse.
+
+They're as able as you: your character's own bonuses (reach, build, mining, drop and pickup distances, as Far Reach
+sets them; crafting, mining and running speed; health; pocket slots, never fewer) are copied onto each of them
+when hired and every 5 seconds (with you dead, any player's on line). Your force's research (hand crafting and
+mining speed, reach, pocket slots, health, weapon damage and shooting speed) applies to them by itself, and their
+hand-crafting is the game's own, so it runs at your speed.
 
 ## AI and voices (needs FSE)
 
@@ -256,6 +268,8 @@ python test/run.py ac-belt 6100    headless game: across a field of running belt
 python test/run.py ac-bots 3610   headless game: crafts gears from plates on a belt; steps off a ghost for construction robots
 python test/run.py ac-trip 7300   headless game: no fuel: mine coal 60 tiles out, fuel a furnace at home, back where it stood; hurt: falls back, heals, back again
 python test/run.py ac-orders 6100 headless game: "mine 10 stone" 80 tiles out: back where it stood with the setting on, not off
+python test/run.py ac-parity 9000 headless game: the crew get a stand-in owner's reach bonuses (far reach) and use them;
+                                   the force's crafting and mining speed; following, a far row of ghosts built in one go
 python test/run.py ac-backed 3100  headless game: drills onto ground are "backed up"; drills onto a full belt are not
 python test/run.py ac-plates 6100  headless game: plates fetched from a chest 100 tiles out, no furnace; machines off: none
 python test/run.py ac-perf 4720    headless game: a big base (2000 chests, 10000 belts): the crew's cost a tick, a plan, a hint
@@ -263,7 +277,8 @@ python test/run.py ac-hint 18800   headless game: starved machines pointed out (
 python test/run.py ac-jet 6100     headless game: a rock inside a closed ring of walls: fly in, mine it, fly out
 python test/run.py ac-roam 36010   headless game: roams round home, powers a dark assembler, finds and kills a worm
 python test/run.py ac-roam2 36010  headless game: roaming: a far upgrade mark done; next tiers from the chest (setting off:
-                                   none; belts never); gears hand-crafted from belt plates; comes to a bitten character
+                                   none; a belt loop one short stays, then goes up whole); gears hand-crafted from belt
+                                   plates; comes to a bitten character
 python test/run.py ac-fight        headless game: arms up, kills biters, clears a spawner and a worm, comes back, respawns
 python test/run.py ac-line 72010   headless game: a goal with a line (a stand-in bpgen places it): built, fed, emptied
 python test/run.py ac-power 144010 headless game: an engine goal with no assembler and no power: they build both
@@ -274,6 +289,7 @@ python test/run.py --all [-j N]    every headless case above, N games at once (d
 python test/run_gui.py             real client (FSE launcher): every tab screenshotted, Settings saved and tested, the hover card
 python test/run_gui.py ac-info     real client: the crew's rows in the game's own info panel (the game window grabbed)
 python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)
+python test/run_gui.py ac-play     real client: hire (roam), your reach copied, help when you're bitten, a following build without bouncing, a tier upgrade
 python test/test_py.py [--live KEY] aicrew.py offline; --live asks a real provider once
 python test/run_mp.py              multiplayer (fse's harness: headless server + client): two crew, an AI test and an order,
                                    the same on both peers, no desync

@@ -86,7 +86,7 @@ TOGGLES = {
   { "machines", "Crew build machines", "When something they need is only made in a machine (plates in a furnace) and none is free, they may put one down. Off: never; they use your machines and fetch what's made from chests and belts first either way" },
   { "back-after-orders", "Back where they stood after orders", "Sent off to get, mine, craft, build or deliver something, they go back to where they stood once it's done and there's nothing more to do (when more than 16 tiles away, and unless they roam or follow you). Off: they stay where the work ended" },
   { "jetpack", "Crew jetpacks", "They fly over what's in their way (and to a fight); off: they step through it a few tiles at a time" },
-  { "tier-upgrades", "Crew upgrade to better tiers", "Roaming, they swap machines, inserters and furnaces for the next tier when it's already in your pockets, chests or network (never made for it). Not belts" },
+  { "tier-upgrades", "Crew upgrade to better tiers", "Roaming, they swap machines, inserters and furnaces for the next tier when it's already in your pockets, chests or network (never made for it). Belts only a whole run at once, all of it in stock" },
 }
 
 local function ai_short(player)

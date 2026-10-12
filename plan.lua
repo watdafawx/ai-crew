@@ -58,7 +58,7 @@ end
 
 local function owner_char(m)
   local p = m.owner and game.get_player(m.owner)
-  local c = p and p.valid and p.character
+  local c = p and p.valid and p.character or not m.owner and storage.test_owner -- (tests: a stand-in for yours)
   if c and c.valid and c.surface == m.entity.surface then return c end
 end
 
@@ -149,6 +149,7 @@ local function note_visit(m, ent, item)
   if not (ent and ent.valid) or ent == m.entity then return end
   local e = m.entity
   if dist2(ent.position, e.position) <= e.reach_distance * e.reach_distance then return end
+  for _, v in ipairs(m.visits or {}) do if v == ent then return end end -- (going there already: one trip)
   if not m.visited or table_size(m.visited) > 200 then m.visited = {} end
   local k = (ent.unit_number or 0) .. item
   if game.tick - (m.visited[k] or -3600) < 3600 then return end
@@ -327,8 +328,16 @@ local function goals()
   return storage.goals
 end
 
--- how many of item the owner has: pockets, chests near them, and what the crew carries
+-- how many of item the owner has: pockets, chests near them, and what the crew carries. Counted at most every 2 s
+-- (a big base's chests and belts add up); kept in storage (the same on every peer), forgotten for an owner whenever
+-- one of its crew finishes a job (think), so a step just done is never counted stale
 local function goal_have(owner, item)
+  storage.have_cache = storage.have_cache or {}
+  local k = owner or 0
+  local c = storage.have_cache[k]
+  if not c then c = {} storage.have_cache[k] = c end
+  local hit = c[item]
+  if hit and game.tick - hit.tick < 120 then return hit.n end
   local n, first = 0, nil
   for _, m in pairs(crew()) do
     if m.owner == owner and m.entity.valid then
@@ -336,7 +345,9 @@ local function goal_have(owner, item)
       n = n + m.entity.get_item_count(item) -- (all its inventories: a crafted gun goes straight to the gun slot)
     end
   end
-  return first and n + available(first, item) or n
+  n = first and n + available(first, item) or n
+  c[item] = { tick = game.tick, n = n }
+  return n
 end
 
 
@@ -561,7 +572,68 @@ local function need_machine(m, r, item, depth)
   return nil, why
 end
 
--- the next job towards having n more of item; nil and why when nothing gets there
+-- what's made beyond reach for plan(): chests within 160 tiles, else belts within 80 (not those near you or home:
+-- those count as had, nor in a keep-out zone or a bpgen line); the nearest, from where the search began. A big base
+-- has thousands of each: searched in bands 8 tiles high, ~300 entities a call, kept in storage between calls (the
+-- answer picks the job: the same on every peer, and a load mid-search goes on). "scan" till done, then where or nil
+local FAR = { { types = { "container", "logistic-container" }, r = 160 },
+  { types = { "transport-belt", "underground-belt", "splitter" }, r = 80, near = 25 } }
+local function far_find(m, item)
+  local e = m.entity
+  m.far_scan = m.far_scan or {}
+  local sc = m.far_scan[item]
+  if not sc or game.tick - sc.tick > 300 or sc.surface ~= e.surface.index then -- (new, or left off a while: afresh)
+    local h, p = anchor(m), e.position
+    sc = { surface = e.surface.index, at = { x = p.x, y = p.y }, home = { x = h.x, y = h.y }, phase = 1 }
+    m.far_scan[item] = sc
+  end
+  sc.tick = game.tick
+  local s, seen = e.surface, 0
+  while seen < 300 do
+    local ph = FAR[sc.phase]
+    local r, near = ph.r, ph.near or RADIUS
+    sc.y = sc.y or math.floor(sc.at.y - r)
+    if sc.y > sc.at.y + r then -- (this kind all looked at: the belts only when no chest has any)
+      if sc.best or sc.phase == 2 then
+        m.far_scan[item] = nil
+        return sc.best
+      end
+      sc.phase, sc.y = 2, nil
+    else
+      local y0, y1, x = sc.y, sc.y + 8, sc.at.x
+      sc.y = y1
+      local dy = (sc.at.y < y0 and y0 - sc.at.y) or (sc.at.y > y1 and sc.at.y - y1) or 0
+      local w = math.sqrt(math.max(r * r - dy * dy, 0)) + 1 -- (the circle's width across the band)
+      local list = s.find_entities_filtered({ type = ph.types, force = e.force,
+        area = { { x - w, y0 }, { x + w, y1 } } })
+      seen = seen + #list
+      for _, ent in pairs(list) do
+        local p = ent.position -- (each once: by its centre, in the band and the circle, as a radius search counts)
+        local d = dist2(p, sc.at)
+        if p.y >= y0 and p.y < y1 and d <= r * r and not (sc.bd and d >= sc.bd) and dist2(p, sc.home) > near * near then
+          local n -- (counted only when it'd be the nearest yet)
+          if sc.phase == 1 then
+            local inv = ent.get_inventory(defines.inventory.chest)
+            n = inv and inv.get_item_count(item) or 0
+          else
+            n = ent.get_item_count(item)
+          end
+          if n > 0 and not kept_out(s, p) then
+            local in_line
+            for _, g in pairs(storage.goals or {}) do
+              if g.line and g.line.box and in_box(g.line.box, p, 1) then in_line = true break end
+            end
+            if not in_line then sc.best, sc.bd = { x = p.x, y = p.y }, d end
+          end
+        end
+      end
+    end
+  end
+  return "scan"
+end
+
+-- the next job towards having n more of item; nil and why when nothing gets there; "scan" while it's still looking
+-- for what's made already (callers wait a moment and ask again; a "get" takes it as a need)
 plan = function(m, item, n, depth)
   depth = depth or 0
   if depth > 10 then return nil, "That's too many steps for me." end
@@ -581,28 +653,9 @@ plan = function(m, item, n, depth)
     -- fetched and brought home. None anywhere: not looked for again for 10 s; a place that gave nothing: a minute
     m.far_skip = m.far_skip or {}
     if game.tick >= (m.far_skip[item] or 0) then
-      local best, bd
-      local home = anchor(m)
-      local function consider(ent, n, near)
-        if n > 0 and dist2(ent.position, home) > near * near and not kept_out(ent.surface, ent.position) then
-          for _, g in pairs(storage.goals or {}) do
-            if g.line and g.line.box and in_box(g.line.box, ent.position, 1) then return end
-          end
-          local d = dist2(e.position, ent.position)
-          if not bd or d < bd then best, bd = ent, d end
-        end
-      end
-      -- (a big base has thousands of each: one count per entity, and the belts only when no chest has any)
-      for _, c in pairs(e.surface.find_entities_filtered({ type = { "container", "logistic-container" }, force = e.force,
-        position = e.position, radius = 160 })) do
-        local inv = c.get_inventory(defines.inventory.chest)
-        if inv then consider(c, inv.get_item_count(item), RADIUS) end
-      end
-      for _, b in pairs(not best and e.surface.find_entities_filtered({ type = { "transport-belt", "underground-belt",
-        "splitter" }, force = e.force, position = e.position, radius = 80 }) or {}) do
-        consider(b, b.get_item_count(item), 25)
-      end
-      if best then return { kind = "collect", item = item, at = best.position, count = math.min(n, 200), far = true } end
+      local best = far_find(m, item)
+      if best == "scan" then return "scan" end
+      if best then return { kind = "collect", item = item, at = best, count = math.min(n, 200), far = true } end
       for _, o in pairs(crew()) do -- (none for the crew close by either: they'd search the same chests and belts)
         local oe = o.entity
         if o.owner == m.owner and oe.valid and oe.surface == e.surface and dist2(oe.position, e.position) < 32 * 32 then
@@ -809,6 +862,7 @@ local function goal_step(m)
         m.goal_wait = game.tick + 300
         return
       end
+      if lj == "scan" then m.next_scan = game.tick return end -- (still looking for what's made: on at the next think)
       if lj then
         g.why, g.step = nil, m.name .. ": " .. (DOING_WORD[lj.kind] or lj.kind) .. " " .. pretty(lj.item or lj.recipe or "") .. " (line)"
         lj.n, lj.skip, lj.goal = 0, {}, true
@@ -818,6 +872,7 @@ local function goal_step(m)
     end
   end
   local job, why = plan(m, g.item, g.count - have)
+  if job == "scan" then m.next_scan = game.tick return end -- (idle looks for work every 2 s: this, at the next think)
   if not job then
     if is_need then
       table.remove(list, 1)

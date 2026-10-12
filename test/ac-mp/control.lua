@@ -12,9 +12,18 @@ end)
 
 script.on_event(defines.events.on_player_joined_game, function(e)
   local p = game.get_player(e.player_index)
-  for i, n in ipairs({ "Juno", "Rook" }) do
-    remote.call("ai-crew", "hire", n, p.surface.name, { x = p.position.x + i * 3, y = p.position.y }, p.force.name, p.index)
+  -- (Juno follows; Rook through the window's Hire: roams, the player's setting. Far reach on the player: both copy it)
+  remote.call("ai-crew", "hire", "Juno", p.surface.name, { x = p.position.x + 3, y = p.position.y }, p.force.name, p.index)
+  remote.call("ai-crew", "panel", p.index, 1)
+  local w = p.gui.screen.aic_window
+  local function find(el, name)
+    if el.name == name then return el end
+    for _, c in pairs(el.children) do local r = find(c, name) if r then return r end end
   end
+  local box = w and find(w, "aic_name")
+  if box then box.text = "Rook" end
+  remote.call("ai-crew", "press", p.index, "hire")
+  if p.character then p.character.character_reach_distance_bonus = 10 end
   storage.ask_at = e.tick + 120
 end)
 
@@ -27,7 +36,8 @@ script.on_nth_tick(60, function(e)
       if el.name == name then return el end
       for _, c in pairs(el.children) do local r = find(c, name) if r then return r end end
     end
-    find(game.get_player(1).gui.screen.aic_window, "aic_set_key").text = "gsk_test0123456789abcd"
+    local screen = game.get_player(1).gui.screen -- (the settings: behind the gear, a panel of their own)
+    find(screen.aic_window__menu or screen.aic_window, "aic_set_key").text = "gsk_test0123456789abcd"
     remote.call("ai-crew", "press", 1, "set_save")
     remote.call("ai-crew", "order", 1, "Rook what do you think of this base?") -- (not a simple order: the LLM)
   end

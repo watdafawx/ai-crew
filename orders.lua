@@ -28,6 +28,32 @@ local function map_marker(e, name, color)
     scale = 1.2, alignment = "center", vertical_alignment = "bottom", render_mode = "chart" })
 end
 
+-- The owner's character's own bonuses on each of the crew, as a player's: reach, build, mining, drop and pickup
+-- distances (far reach sets them per character), crafting, mining and running speed, health, pockets. On hire and
+-- every 5 s, so a changed setting, research or respawn follows; from the owner's character, else any connected
+-- player's, else as they are. Pockets never shrink (what's in them would spill). The force's research (crafting and
+-- mining speed, reach, pockets, health, weapons) reaches the crew by itself: they're characters of the same force
+local OWN_BONUSES = { "character_build_distance_bonus", "character_reach_distance_bonus",
+  "character_resource_reach_distance_bonus", "character_item_drop_distance_bonus",
+  "character_item_pickup_distance_bonus", "character_loot_pickup_distance_bonus",
+  "character_crafting_speed_modifier", "character_mining_speed_modifier",
+  "character_running_speed_modifier", "character_health_bonus", "character_inventory_slots_bonus" }
+local function match_owner(m)
+  local e = m.entity
+  if not (e and e.valid) then return end
+  local p = m.owner and game.get_player(m.owner)
+  local c = p and p.valid and p.character or not m.owner and storage.test_owner -- (tests: a stand-in for yours)
+  if not (c and c.valid) then
+    c = nil
+    for _, q in pairs(game.connected_players) do if q.character then c = q.character break end end
+  end
+  if not c then return end
+  for _, k in ipairs(OWN_BONUSES) do
+    local v = c[k]
+    if e[k] ~= v and (k ~= "character_inventory_slots_bonus" or v > e[k]) then e[k] = v end
+  end
+end
+
 -- mode: "roam", "follow" or "stay"; nil: the owner's setting "ai-crew-new-mode" (roam), with no player follow
 local function hire(name, surface, position, force, owner, mode)
   local pl = owner and game.get_player(owner) or not owner and any_player()
@@ -51,6 +77,7 @@ local function hire(name, surface, position, force, owner, mode)
   local m = { name = name, entity = e, owner = owner, home = { x = at.x, y = at.y }, jobs = {}, color = color,
     voice = i, follow = mode == "follow", roam = mode == "roam" or nil, phase = i * 3, mapped = true }
   crew()[name] = m
+  match_owner(m)
   return m
 end
 
@@ -414,7 +441,8 @@ end
 -- what the other files use of this one, and its link: control.lua calls it once all files are loaded
 return {
   share = { add_job = add_job, context = context, find_member = find_member, hear = hear, hire = hire,
-    job_for = job_for, map_marker = map_marker, members_of = members_of, order = order, tell = tell },
+    job_for = job_for, map_marker = map_marker, match_owner = match_owner, members_of = members_of, order = order,
+    tell = tell },
   link = function(A)
     ACKS, ada, add_need, any_player, available, claims = A.ACKS, A.ada, A.add_need, A.any_player, A.available, A.claims
     COLORS, CREW, crew, dist2, goals, handcraft_recipe = A.COLORS, A.CREW, A.crew, A.dist2, A.goals, A.handcraft_recipe

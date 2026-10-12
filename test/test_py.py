@@ -132,6 +132,160 @@ warm_wait()
 assert aicrew._warmed and FakeKokoro.calls == 1, FakeKokoro.calls
 aicrew.kokoro_model = real_model
 aicrew._warmed, aicrew._warming = False, None
+# control.lua's files, statically (no game): each file's imports are shared by some file (or control.lua's A) and
+# match its link; each shared name is defined in its file; no file uses a name it never declares (a global, a typo).
+# Best effort, scope-blind: a name declared anywhere in a file counts as declared all through it.
+import re  # noqa: E402
+
+LUA_KEYWORDS = set("and break do else elseif end false for function goto if in local nil not or repeat return then "
+                   "true until while".split())
+GLOBALS = set("game script storage defines prototypes helpers rendering settings remote commands serpent log "
+              "localised_print table_size native mods data assert error ipairs pairs next pcall xpcall print select "
+              "setmetatable getmetatable rawget rawset rawequal rawlen tonumber tostring type unpack table string math "
+              "debug load require _G _ENV utf8 bit32 os".split())
+
+
+LONG = re.compile(r"\[(=*)\[")
+TOKEN = re.compile(r"[A-Za-z_]\w*|0[xX][0-9a-fA-F]+|\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+|\.\.\.|\.\.|::|[=~<>]=|.")
+
+
+def lua_tokens(src):
+    """(kind, text, line): names, numbers, symbols; strings come back as one "str" token, comments are dropped."""
+    out, i, line, n = [], 0, 1, len(src)
+    while i < n:
+        c = src[i]
+        if c == "\n":
+            line, i = line + 1, i + 1
+        elif c in " \t\r":
+            i += 1
+        elif src.startswith("--", i):
+            m = LONG.match(src, i + 2)
+            j = src.find("]" + m.group(1) + "]", i) if m else src.find("\n", i)
+            j = n if j < 0 else j + len(m.group(1)) + 2 if m else j
+            line, i = line + src.count("\n", i, j), j
+        elif c == "[" and LONG.match(src, i):
+            eq = LONG.match(src, i).group(1)
+            j = src.find("]" + eq + "]", i) + len(eq) + 2
+            out.append(("str", "", line))
+            line, i = line + src.count("\n", i, j), j
+        elif c in "\"'":
+            j = i + 1
+            while src[j] != c:
+                j += 2 if src[j] == "\\" else 1
+            out.append(("str", "", line))
+            line, i = line + src.count("\n", i, j), j + 1
+        else:
+            m = TOKEN.match(src, i)
+            t = m.group(0)
+            out.append(("name" if re.match(r"[A-Za-z_]", t) and t not in LUA_KEYWORDS else "sym", t, line))
+            i += len(t)
+    return out
+
+
+def lua_names(toks):
+    """(declared, used): every name a file declares (local, params, for, its functions), and its free uses."""
+    declared, used, stack = set(), [], []
+    for k, (kind, t, ln) in enumerate(toks):
+        prev = toks[k - 1][1] if k else ""
+        nxt = toks[k + 1][1] if k + 1 < len(toks) else ""
+        if kind == "sym" and t in ("(", "{", "["):
+            stack.append(t)
+        elif kind == "sym" and t in (")", "}", "]") and stack:
+            stack.pop()
+        if kind != "name":
+            continue
+        if (prev in ("local", "for") or (prev == "," and decl_list(toks, k))
+                or (prev == "function" and toks[k - 2][1] == "local") or param(toks, k)):
+            declared.add(t)
+        elif prev in (".", ":", "::", "goto") or nxt == "::":
+            pass
+        elif nxt == "=" and stack and stack[-1] == "{" and prev in ("{", ",", ";"):
+            pass  # (a table key)
+        else:
+            used.append((t, ln))
+    return declared, used
+
+
+def decl_list(toks, k):
+    """is toks[k] (after a comma) in a `local a, b` or `for a, b` name list?"""
+    while k >= 2 and toks[k - 1][1] == "," and toks[k - 2][0] == "name":
+        k -= 2
+    return k >= 1 and toks[k - 1][1] in ("local", "for")
+
+
+def param(toks, k):
+    """is toks[k] a function parameter?"""
+    j = k - 1
+    while j >= 0 and (toks[j][1] == "," or toks[j][0] == "name" or toks[j][1] == "..."):
+        j -= 1
+    if j < 1 or toks[j][1] != "(":
+        return False
+    j -= 1
+    if toks[j][1] == "function":
+        return True
+    while j >= 1 and toks[j][0] == "name" and toks[j - 1][1] in (".", ":"):
+        j -= 2
+    return toks[j][0] == "name" and j >= 1 and toks[j - 1][1] == "function"
+
+
+def lua_table_keys(text):
+    """the keys of a flat `{ k = v, ... }` (one level of nesting skipped)."""
+    flat = re.sub(r"\{[^{}]*\}", "{}", text.strip()[1:-1])
+    return dict(re.findall(r"(\w+)\s*=\s*([\w.]+|\{\})", flat))
+
+
+def check_links(mod):
+    control = (mod / "control.lua").read_text(encoding="utf-8")
+    files = re.search(r"FILE_NAMES = \{([^}]*)\}", control).group(1)
+    files = re.findall(r'"(\w+)"', files)
+    assert files, "control.lua: no FILE_NAMES"
+    a = lua_table_keys(re.search(r"local A = (\{.*?\})\n", control, re.S).group(1))
+    available = set(a)
+    imports, problems = {}, []
+    for name in files:
+        src = (mod / (name + ".lua")).read_text(encoding="utf-8")
+        ret = re.search(r"\nreturn \{\s*\n\s*share = (\{.*?\}),\s*\n\s*link = function\(A\)\n(.*?)\n\s*end,", src, re.S)
+        assert ret, name + ".lua: no `return { share = {...}, link = function(A) ... end, }` at its end"
+        share = lua_table_keys(ret.group(1))
+        declared, _ = lua_names(lua_tokens(src[:ret.start()]))
+        for k, v in share.items():
+            if k != v:
+                problems.append(f"{name}.lua shares {k} = {v} (not its own name)")
+            elif v not in declared:
+                problems.append(f"{name}.lua shares {k}, which it never defines")
+            if k in available:
+                problems.append(f"{name}.lua shares {k}, already shared by another file or control.lua")
+            available.add(k)
+        head = re.search(r"\(the other files' that this one uses: set by link.*\n(local .*\n(?:  .*\n)*)", src)
+        decl = set(re.findall(r"\w+", head.group(1))[1:]) if head else set()
+        got = set()
+        for lhs, rhs in re.findall(r"^\s*([\w, ]+?)\s*=\s*(A\.[\w, .A]+)$", ret.group(2), re.M):
+            lhs = [x.strip() for x in lhs.split(",")]
+            rhs = [x.strip()[2:] for x in rhs.split(",")]
+            if lhs != rhs:
+                problems.append(f"{name}.lua link: {', '.join(lhs)} = {', '.join('A.' + x for x in rhs)} (mismatched)")
+            got.update(rhs)
+        for x in sorted(decl - got):
+            problems.append(f"{name}.lua declares import {x}, which its link never sets")
+        for x in sorted(got - decl):
+            problems.append(f"{name}.lua link sets {x}, which it never declares at its top")
+        imports[name] = got
+    after = control[control.index("FILE_NAMES"):]
+    imports["control"] = set(re.findall(r"\bA\.(\w+)", after.split("setmetatable(A, nil)")[0]))
+    for name, got in imports.items():
+        for x in sorted(got - available):
+            problems.append(f"{name}.lua imports {x}, which no file shares")
+    for name in files + ["control"]:
+        declared, used = lua_names(lua_tokens((mod / (name + ".lua")).read_text(encoding="utf-8")))
+        for t, ln in used:
+            if t not in declared and t not in GLOBALS:
+                problems.append(f"{name}.lua:{ln}: {t} is neither local, imported nor a Lua/Factorio global")
+    return problems
+
+
+links = check_links(Path(__file__).resolve().parents[1])
+assert not links, "control.lua's files:\n  " + "\n  ".join(links)
+
 print("offline OK")
 
 if "--live" in sys.argv:

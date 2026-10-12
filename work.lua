@@ -3,7 +3,7 @@
 
 -- (the other files' that this one uses: set by link, at the end)
 local anchor, available, crew, crew_built, dist2, fuel_available, go, handcraft_recipe, IN, kept_out, machines_for,
-  needs_fuel, OUT, pretty, RADIUS, refuel, remember, say, sources_for, spot, stop_mining, take, unload
+  goals, needs_fuel, OUT, pretty, RADIUS, refuel, remember, say, sources_for, spot, stop_mining, take, unload
 
 -- ------------------------------------------------------------------------------------------------------------- jobs
 
@@ -106,7 +106,7 @@ end
 local function next_target(m, job, targets, item_of)
   local e = m.entity
   local cache, craftable, demand, best, bd, best_k = {}, {}, {}, nil, nil, nil
-  job.short = {}
+  job.short, job.want = {}, {}
   local inv = e.get_main_inventory()
   for _, g in pairs(targets) do
     local key = key_of(g)
@@ -129,6 +129,9 @@ local function next_target(m, job, targets, item_of)
         else
           job.short[k] = it
         end
+        if cache[k] >= it.count then
+          job.want[k] = { name = it.name, quality = it.quality, count = math.min(demand[k], cache[k]) }
+        end
       end
     end
   end
@@ -140,17 +143,46 @@ local function next_target(m, job, targets, item_of)
   return best, { item = it.name, count = math.min(demand[best_k] - cache[best_k], 50), single = it.count }
 end
 
+-- where a build, upgrade or clearing job works: round the owner (or home) as it starts, kept while it lasts. You
+-- walking off don't drag the work along, nor them back and forth with it
+local function job_area(m, job)
+  if not job.at then
+    local a = anchor(m)
+    job.at = { x = a.x, y = a.y }
+  end
+  return job.at
+end
+
+-- a build's (or upgrade's) first pick: what its marks want that's to be had (your pockets, chests) taken in one go, a
+-- share of it when more of the crew are round there (a stack at most): one trip over for it, not one per mark
+local function stock(m, job)
+  if job.stocked then return end
+  job.stocked = true
+  local e = m.entity
+  local inv, share = e.get_main_inventory(), 0
+  for _, o in pairs(crew()) do
+    local oe = o.entity
+    local near = oe.valid and oe.surface == e.surface and dist2(oe.position, job.at) < 4 * RADIUS * RADIUS
+    if o.owner == m.owner and near then share = share + 1 end
+  end
+  for _, w in pairs(job.want or {}) do
+    local more = math.min(math.ceil(w.count / math.max(share, 1)), prototypes.item[w.name].stack_size)
+      - inv.get_item_count({ name = w.name, quality = w.quality })
+    if more > 0 then take(m, w.name, more, w.quality) end
+  end
+end
+
 local function next_ghost(m, job)
   local e = m.entity
   return next_target(m, job, e.surface.find_entities_filtered({ type = { "entity-ghost", "tile-ghost" }, force = e.force,
-    position = anchor(m), radius = RADIUS }), place_item)
+    position = job_area(m, job), radius = RADIUS }), place_item)
 end
 
 -- (job.at: round where a roaming member found them.) A better tier they marked themselves (storage.tier_marks, see
 -- roam.lua's tier_up) only with the item to hand, never made for it: else the mark is taken back
 local function next_upgrade(m, job)
   local e = m.entity
-  local list = e.surface.find_entities_filtered({ to_be_upgraded = true, force = e.force, position = job.at or anchor(m),
+  local list = e.surface.find_entities_filtered({ to_be_upgraded = true, force = e.force, position = job_area(m, job),
     radius = RADIUS })
   local tm, have = storage.tier_marks, {}
   for i = #list, 1, -1 do
@@ -210,6 +242,7 @@ JOBS.build = function(m, job)
       return true
     end
     if c and e.crafting_queue_size == 0 then craft_for(m, c.item, c.count, c.single) end
+    stock(m, job)
     local it = place_item(g) -- (taken now: a trip to the chest comes before the walk to the ghost)
     local have = e.get_main_inventory().get_item_count({ name = it.name, quality = it.quality })
     if have < it.count then take(m, it.name, it.count - have, it.quality) end
@@ -252,6 +285,7 @@ JOBS.upgrade = function(m, job)
       return true
     end
     if c and e.crafting_queue_size == 0 then craft_for(m, c.item, c.count, c.single) end
+    stock(m, job)
     local it = upgrade_item(t)
     local have = e.get_main_inventory().get_item_count({ name = it.name, quality = it.quality })
     if have < it.count then take(m, it.name, it.count - have, it.quality) end
@@ -269,9 +303,30 @@ JOBS.upgrade = function(m, job)
   if own then tm[t.unit_number] = nil end
   if have >= it.count then
     local proto, q = t.get_upgrade_target()
+    -- (a belt's items: what the swap drops in their pockets goes back onto the new piece, not home with them)
+    local belt = t.type == "transport-belt" or t.type == "underground-belt" or t.type == "splitter"
+    local before = {}
+    if belt then
+      for _, c in pairs(inv.get_contents()) do before[c.name .. "/" .. c.quality] = (before[c.name .. "/" .. c.quality] or 0) + c.count end
+    end
+    local old_item = belt and t.prototype.items_to_place_this and t.prototype.items_to_place_this[1]
     local new = e.surface.create_entity({ name = proto.name, quality = q, position = t.position, direction = t.direction,
       force = t.force, fast_replace = true, character = e, raise_built = true,
       type = t.type == "underground-belt" and t.belt_to_ground_type or nil })
+    if belt and new and new.valid then
+      for _, c in pairs(inv.get_contents()) do
+        local extra = c.count - (before[c.name .. "/" .. c.quality] or 0)
+        if old_item and c.name == old_item.name then extra = extra - (old_item.count or 1) end
+        for i = 1, new.get_max_transport_line_index() do
+          local line = new.get_transport_line(i)
+          while extra > 0 and line.can_insert_at_back() do
+            if not line.insert_at_back({ name = c.name, count = 1, quality = c.quality }) then break end
+            inv.remove({ name = c.name, count = 1, quality = c.quality })
+            extra = extra - 1
+          end
+        end
+      end
+    end
     if new and new.valid then
       inv.remove({ name = it.name, count = it.count, quality = it.quality })
       job.n = job.n + 1
@@ -294,7 +349,8 @@ JOBS.deconstruct = function(m, job)
   if not (t and t.valid and t.to_be_deconstructed()) then
     t = nil
     local bd
-    for _, c in pairs(e.surface.find_entities_filtered({ position = anchor(m), radius = RADIUS, to_be_deconstructed = true })) do
+    for _, c in pairs(e.surface.find_entities_filtered({ position = job_area(m, job), radius = RADIUS,
+      to_be_deconstructed = true })) do
       local key = key_of(c)
       local claim = claims()[key]
       if c.type ~= "character" and not job.skip[key] and c.minable and (not claim or claim == m.name or not crew()[claim]) then
@@ -314,9 +370,11 @@ JOBS.deconstruct = function(m, job)
   local key = key_of(t)
   claims()[key] = nil
   local mt = t.prototype.mineable_properties.mining_time or 0.5
+  local speed = 1 + e.force.manual_mining_speed_modifier + e.character_mining_speed_modifier -- (research, yours)
   if e.mine_entity(t, false) then
     job.n = job.n + 1
-    m.wait_until = game.tick + math.min(math.floor(mt * 40), 60) + 4 -- (taking it down takes a moment)
+    -- (taking it down takes a moment)
+    m.wait_until = game.tick + math.floor(math.min(mt * 40, 60) / math.max(speed, 0.1)) + 4
   elseif e.get_main_inventory().count_empty_stacks() == 0 then
     table.insert(m.jobs, 1, { kind = "deliver" }) -- pockets full: drop off, then carry on
     return false
@@ -433,7 +491,14 @@ JOBS.fetch = function(m, job)
 end
 
 JOBS.deliver = function(m, job)
-  if m.entity.get_main_inventory().is_empty() then return true end
+  local inv = m.entity.get_main_inventory()
+  if inv.is_empty() then return true end
+  -- after a step towards a need or the goal with more to come: kept for the next step (what the crew carry counts),
+  -- not walked over to you and fetched back; idle hands it over once no step follows (pockets filling: now)
+  if job.step and not m.jobs[2] and (needs(m.owner)[1] or goals()[m.owner or 0]) and inv.count_empty_stacks() > 10 then
+    m.kept = true
+    return true
+  end
   if not go(m, spot(m, anchor(m)), 2) then return false end
   unload(m)
   return true
@@ -634,7 +699,7 @@ return {
     fuel_available, go, handcraft_recipe, IN, kept_out = A.fuel_available, A.go, A.handcraft_recipe, A.IN, A.kept_out
     machines_for, needs_fuel, OUT, pretty, RADIUS = A.machines_for, A.needs_fuel, A.OUT, A.pretty, A.RADIUS
     refuel, remember, say, sources_for, spot = A.refuel, A.remember, A.say, A.sources_for, A.spot
-    stop_mining, take, unload = A.stop_mining, A.take, A.unload
+    goals, stop_mining, take, unload = A.goals, A.stop_mining, A.take, A.unload
   end,
   JOBS = JOBS,
 }
