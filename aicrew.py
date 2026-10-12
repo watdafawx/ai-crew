@@ -6,7 +6,7 @@ Lua calls (strings in, JSON strings out):
   aicrew:banter {llm, context}       -> {replies}  (chatter: idle while the player is away, or context.event reacted to)
   aicrew:line   {llm, name, manner, event, text}  -> {text}  (a stock news line in that member's own words)
   aicrew:check  {llm}                       -> {provider, key (masked), source, ok, seconds, model, error, tts}
-  aicrew:speak  {text, voice}   queued and spoken on a thread; returns at once
+  aicrew:speak  {text, voice, volume}   queued and spoken on a thread; returns at once
 
 Every provider speaks the OpenAI chat API. Keys are free to get (see NO_KEY); Ollama needs none.
 Voices: Kokoro on this computer (uv pip install kokoro-onnx): one per crew member, and ADA's (heart unless picked).
@@ -423,8 +423,9 @@ def kokoro_model():
     return _kokoro
 
 
-def _say_kokoro(text, voice="af_heart", lang="en-us", ada=True):
-    """text in a Kokoro voice (ADA's with her effects); False when Kokoro can't (yet): the line stays unspoken"""
+def _say_kokoro(text, voice="af_heart", lang="en-us", ada=True, volume=1.0):
+    """text in a Kokoro voice (ADA's with her effects), at volume (0 to 1); False when Kokoro can't (yet): the line
+    stays unspoken"""
     try:
         k = kokoro_model()
         if not k:
@@ -443,7 +444,7 @@ def _say_kokoro(text, voice="af_heart", lang="en-us", ada=True):
             w.setnchannels(1)
             w.setsampwidth(2)
             w.setframerate(rate)
-            w.writeframes((samples.clip(-1, 1) * 32767).astype("<i2").tobytes())
+            w.writeframes(((samples * volume).clip(-1, 1) * 32767).astype("<i2").tobytes())
         if ada and _ada_fx(path, mp3):
             _play_mp3(mp3)
         else:
@@ -493,26 +494,45 @@ def ada_chime():
     return _chime
 
 
-def _play_chime():
+def _play_chime(volume=1.0):
     import winsound
-    winsound.PlaySound(ada_chime(), winsound.SND_FILENAME)
+    if volume >= 0.999:
+        return winsound.PlaySound(ada_chime(), winsound.SND_FILENAME)
+    import wave
+    import numpy as np
+    with wave.open(ada_chime()) as w:
+        params, frames = w.getparams(), w.readframes(w.getnframes())
+    if params.sampwidth != 2:  # (an own chime that isn't 16-bit: played as it is)
+        return winsound.PlaySound(ada_chime(), winsound.SND_FILENAME)
+    data = (np.frombuffer(frames, "<i2") * volume).astype("<i2").tobytes()
+    fd, path = tempfile.mkstemp(suffix=".wav", prefix="aicrew-chime-")
+    os.close(fd)
+    try:
+        with wave.open(path, "wb") as w:
+            w.setparams(params)
+            w.writeframes(data)
+        winsound.PlaySound(path, winsound.SND_FILENAME)
+    finally:
+        os.unlink(path)
 
 
-def _say(text, voice):
+def _say(text, voice, volume=1.0):
+    if volume <= 0:
+        return
     ada = str(voice).startswith("ada")
     if ada:
         try:
-            _play_chime()
+            _play_chime(volume)
         except Exception as e:  # noqa: BLE001 - no chime is fine
             print(f"[aicrew] chime: {e}")
-    _say_kokoro(text, *kokoro_voice_for(voice), ada=ada)
+    _say_kokoro(text, *kokoro_voice_for(voice), ada=ada, volume=volume)
 
 
 def _run():
     while True:
-        text, voice = _queue.get()
+        text, voice, volume = _queue.get()
         try:
-            _say(text, voice)
+            _say(text, voice, volume)
         except Exception as e:  # noqa: BLE001 - a voice failing must never stop the queue
             print(f"[aicrew] speak: {e}")
 
@@ -528,5 +548,9 @@ def speak(s):
         voice = req.get("voice")
         if voice == "ada" and req.get("ada_voice"):
             voice = "ada:" + str(req["ada_voice"])
-        _queue.put((text[:400], voice))
+        try:
+            volume = min(max(float(req.get("volume", 1)), 0.0), 1.0)
+        except (TypeError, ValueError):
+            volume = 1.0
+        _queue.put((text[:400], voice, volume))
     return "ok"

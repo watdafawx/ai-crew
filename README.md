@@ -198,7 +198,8 @@ Or set `OPENROUTER_API_KEY` (etc.) before starting the game. The Model setting o
 Voices: the crew speak in [Kokoro](https://github.com/thewh1teagle/kokoro-onnx)'s voices, run on your own computer
 (`uv pip install --system kokoro-onnx`), each member their own (British and American, men and women). Without
 Kokoro, or until its model is there (below), lines are only in chat. Toggle crew voices, "Crew word their lines with
-the AI", ADA, and "ADA words her lines with the AI" per player.
+the AI", ADA, and "ADA words her lines with the AI" per player, and set how loud the crew and ADA are (0 to 100 %,
+sliders under the window's gear, "ADA and voices").
 
 ADA's voice: Satisfactory's ADA is, by the community's ear, Google's WaveNet `en-US-Wavenet-C` with a multi-voice
 chorus and a doubled, slightly detuned echo. Here a Kokoro voice (pick it in Settings; **Hear** plays a line) goes

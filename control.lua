@@ -146,7 +146,8 @@ local function speak(text, voice, player)
   if not (player and py()) then return end
   if not player_setting(player, voice == "ada" and "ai-crew-ada" or "ai-crew-voices") then return end
   native.call("py", "aicrew:speak", helpers.table_to_json({ text = text, voice = voice,
-    ada_voice = voice == "ada" and player_setting(player, "ai-crew-ada-voice") or nil }))
+    ada_voice = voice == "ada" and player_setting(player, "ai-crew-ada-voice") or nil,
+    volume = (player_setting(player, voice == "ada" and "ai-crew-ada-volume" or "ai-crew-voice-volume") or 100) / 100 }))
 end
 
 local function llm_settings(player)
@@ -3668,6 +3669,14 @@ local function act(player, action, who, scripted)
     r.add({ type = "drop-down", name = "aic_set_ada_voice", items = ADA_VOICES, selected_index = vi,
       tooltip = "ADA's Kokoro voice (alice and lily British) under her effects (chorus and a detuned echo; they need ffmpeg)" })
     btn(r, "Hear", "ada_hear", nil, "ADA says a line in this voice", 60).enabled = py()
+    for _, v in ipairs({ { "voice-volume", "Crew volume" }, { "ada-volume", "ADA volume" } }) do -- (0 to 100 %)
+      r = row(voice)
+      local cur = player_setting(player, "ai-crew-" .. v[1]) or 100
+      r.add({ type = "label", caption = v[2] }).style.minimal_width = 90
+      r.add({ type = "slider", name = "aic_set_" .. v[1], minimum_value = 0, maximum_value = 100, value = cur, value_step = 5,
+        tooltip = "How loud " .. (v[1] == "ada-volume" and "ADA (and her chime) is" or "the crew's voices are") })
+      r.add({ type = "label", name = "aic_vol_" .. v[1], caption = cur .. "%" })
+    end
     local own = theme.fold(scroll, "What the crew do", false)
     for i, c in ipairs(TOGGLES) do
       local parent = (c[1] == "voices" or c[1] == "lines-llm" or c[1] == "ada" or c[1] == "ada-llm") and voice or own
@@ -3937,6 +3946,15 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(ev)
     game.get_player(ev.player_index).mod_settings["ai-crew-ada-voice"] = { value = ADA_VOICES[ev.element.selected_index] or "heart" }
   end
   if ev.element.name == "aic_who" then ui(game.get_player(ev.player_index)).who = ev.element.selected_index end
+end)
+
+script.on_event(defines.events.on_gui_value_changed, function(ev)
+  local name = ev.element.name:match("^aic_set_(.+%-volume)$")
+  if not name then return end
+  local v = math.floor(ev.element.slider_value + 0.5)
+  game.get_player(ev.player_index).mod_settings["ai-crew-" .. name] = { value = v }
+  local l = ev.element.parent["aic_vol_" .. name]
+  if l then l.caption = v .. "%" end
 end)
 
 script.on_event(defines.events.on_gui_selected_tab_changed, function(ev)
