@@ -7,6 +7,7 @@ Lua calls (strings in, JSON strings out):
   aicrew:line   {llm, name, manner, event, text}  -> {text}  (a stock news line in that member's own words)
   aicrew:check  {llm}                       -> {provider, key (masked), source, ok, seconds, model, error, tts}
   aicrew:speak  {text, voice, volume}   queued and spoken on a thread; returns at once
+  aicrew:warm   {}                      Kokoro loaded and warmed on a thread (once a session); returns at once
 
 Every provider speaks the OpenAI chat API. Keys are free to get (see NO_KEY); Ollama needs none.
 Voices: Kokoro on this computer (uv pip install kokoro-onnx): one per crew member, and ADA's (heart unless picked).
@@ -423,14 +424,43 @@ def kokoro_model():
     return _kokoro
 
 
+_kokoro_lock = threading.Lock()  # (loading and create: the warm-up and the voice thread never at once)
+_warming = None
+_warmed = False
+
+
+def _warm_up():
+    global _warmed
+    try:
+        with _kokoro_lock:
+            k = kokoro_model()
+            if k:
+                k.create("ready", voice="af_heart", speed=1.0, lang="en-us")  # (ONNX's first run is the slow one)
+                _warmed = True
+    except Exception as e:  # noqa: BLE001 - not installed, or a broken model: the first line finds out
+        if not isinstance(e, ImportError):
+            print(f"[aicrew] kokoro warm-up: {e}")
+
+
+def warm(s=None):
+    """Kokoro loaded and run once on a thread, nothing played, so the session's first line isn't late; again until
+    it's done (its files may still be coming), then a no-op"""
+    global _warming
+    if not _warmed and (_warming is None or not _warming.is_alive()):
+        _warming = threading.Thread(target=_warm_up, name="aicrew-warm", daemon=True)
+        _warming.start()
+    return "ok"
+
+
 def _say_kokoro(text, voice="af_heart", lang="en-us", ada=True, volume=1.0):
     """text in a Kokoro voice (ADA's with her effects), at volume (0 to 1); False when Kokoro can't (yet): the line
     stays unspoken"""
     try:
-        k = kokoro_model()
-        if not k:
-            return False
-        samples, rate = k.create(text, voice=voice, speed=0.95 if ada else 1.05, lang=lang)
+        with _kokoro_lock:
+            k = kokoro_model()
+            if not k:
+                return False
+            samples, rate = k.create(text, voice=voice, speed=0.95 if ada else 1.05, lang=lang)
     except Exception as e:  # noqa: BLE001 - not installed, or a broken model
         if not isinstance(e, ImportError):
             print(f"[aicrew] kokoro: {e}")

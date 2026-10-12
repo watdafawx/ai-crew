@@ -4,7 +4,8 @@
 -- follow, stay, stop. The panel's chat box goes to an LLM through the fse loader (aicrew.py), which answers in
 -- character and may queue the same jobs; plain orders typed there ("get 50 iron ore") run without it.
 --
--- remote.call("ai-crew", ...): hire(name, surface, position, force?, owner_index?), order(owner_index, text), status(name)
+-- remote.call("ai-crew", ...): hire(name, surface, position, force?, owner_index?, mode?), order(owner_index, text),
+-- status(name)
 
 local D = defines.direction
 local DIRS = { D.north, D.northeast, D.east, D.southeast, D.south, D.southwest, D.west, D.northwest }
@@ -43,7 +44,8 @@ local ROAM = 40 -- roaming: how far from the player (or home) they wander
 -- runs it (its Python, its key) and, in multiplayer, sends the answer to all with native.sync (fse-std raises
 -- "fse-sync"), so every peer applies the same answer in the same tick. In single player the answer applies at once.
 local jobs = { running = {} } -- running: native job id -> job number (only on the peer running it); on_answer: with
--- the panel; checked: the AI was tested this session (single player). One table: the main chunk's locals are full.
+-- the panel; checked: the AI was tested this session (single player); warmed: Kokoro warmed this session. One
+-- table: the main chunk's locals are full.
 -- player index -> the last AI test (storage.ai_tests: the panel shows it, and every peer's panel must match)
 local function ai_state()
   storage.ai_tests = storage.ai_tests or {}
@@ -362,18 +364,27 @@ local function anchor(m)
   return c and c.position or m.home
 end
 
--- chests near the owner (or home); logistic chests only when they're in no network (the network counts those)
-local function chests(m)
-  local out = {}
-  for _, ch in pairs(m.entity.surface.find_entities_filtered({ type = { "container", "logistic-container" },
-    force = m.entity.force, position = anchor(m), radius = RADIUS })) do
-    local inv = ch.get_inventory(defines.inventory.chest)
-    if inv and not (ch.type == "logistic-container" and ch.logistic_network) and not kept_out(ch.surface, ch.position) then
-      out[#out + 1] = inv
+-- chests near the owner (or home); logistic chests only when they're in no network (the network counts those).
+-- One search per member a tick (available() runs dozens of times a tick when arming): a copy of the list each call
+local chests
+do local chest_cache = {} function chests(m)
+  local c = chest_cache[m.name]
+  if not (c and c.tick == game.tick) then
+    c = { tick = game.tick, invs = {} }
+    for _, ch in pairs(m.entity.surface.find_entities_filtered({ type = { "container", "logistic-container" },
+      force = m.entity.force, position = anchor(m), radius = RADIUS })) do
+      local inv = ch.get_inventory(defines.inventory.chest)
+      if inv and not (ch.type == "logistic-container" and ch.logistic_network)
+        and not kept_out(ch.surface, ch.position) then
+        c.invs[#c.invs + 1] = inv
+      end
     end
+    chest_cache[m.name] = c
   end
+  local out = {}
+  for _, inv in ipairs(c.invs) do if inv.valid then out[#out + 1] = inv end end
   return out
-end
+end end
 
 -- the logistic network where the owner (or home) is: its storage and provider chests, wherever they are
 local function network(m)
@@ -387,24 +398,26 @@ end
 
 -- belt lanes near the owner (or home): items going by are fair game before hand-crafting them, as a player grabs
 -- plates off the bus. Not a bpgen line's belts (the crew feed and empty those) or a keep-out zone.
--- chisle: one search per member a tick, the lanes kept in a plain local (rebuilt each tick, never saved)
+-- chisle: one search per member a tick, the lanes kept in a plain local (rebuilt each tick, never saved). m.belts_at:
+-- round there instead (a roamer's own batch, crafted from what goes by where it stands)
 local belt_lanes
 do local belt_cache = {} function belt_lanes(m)
   local c = belt_cache[m.name]
-  if c and c.tick == game.tick then return c.lanes end
+  local at = m.belts_at
+  if c and c.tick == game.tick and c.at == at then return c.lanes end
   local lanes, boxes = {}, {}
   for _, g in pairs(storage.goals or {}) do
     if g.line and g.line.box then boxes[#boxes + 1] = g.line.box end
   end
   for _, b in pairs(m.entity.surface.find_entities_filtered({ type = { "transport-belt", "underground-belt", "splitter" },
-    force = m.entity.force, position = anchor(m), radius = 24 })) do
+    force = m.entity.force, position = at or anchor(m), radius = 24 })) do
     local mine = not kept_out(b.surface, b.position)
     for _, box in ipairs(boxes) do if mine and in_box(box, b.position, 1) then mine = false end end
     if mine then
       for i = 1, b.get_max_transport_line_index() do lanes[#lanes + 1] = b.get_transport_line(i) end
     end
   end
-  belt_cache[m.name] = { tick = game.tick, lanes = lanes }
+  belt_cache[m.name] = { tick = game.tick, lanes = lanes, at = at }
   return lanes
 end end
 
@@ -843,10 +856,33 @@ local function next_ghost(m, job)
     position = anchor(m), radius = RADIUS }), place_item)
 end
 
+-- (job.at: round where a roaming member found them.) A better tier they marked themselves (storage.tier_marks, see
+-- REMARKS.tiers) only with the item to hand, never made for it: else the mark is taken back
 local function next_upgrade(m, job)
   local e = m.entity
-  return next_target(m, job, e.surface.find_entities_filtered({ to_be_upgraded = true, force = e.force,
-    position = anchor(m), radius = RADIUS }), upgrade_item)
+  local list = e.surface.find_entities_filtered({ to_be_upgraded = true, force = e.force, position = job.at or anchor(m),
+    radius = RADIUS })
+  local tm, have = storage.tier_marks, {}
+  for i = #list, 1, -1 do
+    local t = list[i]
+    local claim = tm and tm[t.unit_number or 0] and claims()[key_of(t)]
+    if tm and tm[t.unit_number or 0] and not (claim and claim ~= m.name and crew()[claim]) then
+      local it = upgrade_item(t)
+      local k = it and it.name .. "/" .. it.quality
+      if k and have[k] == nil then
+        have[k] = e.get_main_inventory().get_item_count({ name = it.name, quality = it.quality })
+          + available(m, it.name, it.quality)
+      end
+      if k and have[k] >= it.count then
+        have[k] = have[k] - it.count
+      else
+        tm[t.unit_number] = nil
+        t.cancel_upgrade(t.force)
+        table.remove(list, i)
+      end
+    end
+  end
+  return next_target(m, job, list, upgrade_item)
 end
 
 -- what it did and what it's missing; on its own (auto) only news: something done, or a new shortage
@@ -938,6 +974,9 @@ JOBS.upgrade = function(m, job)
   local have = inv.get_item_count({ name = it.name, quality = it.quality })
   if have < it.count then have = have + take(m, it.name, it.count - have, it.quality) end
   if have < it.count and e.crafting_queue_size > 0 then return false end -- still crafting it
+  local tm = storage.tier_marks
+  local own = tm and t.unit_number and tm[t.unit_number]
+  if own then tm[t.unit_number] = nil end
   if have >= it.count then
     local proto, q = t.get_upgrade_target()
     local new = e.surface.create_entity({ name = proto.name, quality = q, position = t.position, direction = t.direction,
@@ -953,6 +992,7 @@ JOBS.upgrade = function(m, job)
   else
     job.skip[key] = true
   end
+  if own and t.valid and job.skip[key] then t.cancel_upgrade(t.force) end -- (their own mark: not left hanging)
   claims()[key] = nil
   job.target = nil
   return false
@@ -1064,7 +1104,10 @@ JOBS.craft = function(m, job)
     if not r then say(m, "I can't hand-craft " .. pretty(job.recipe) .. ".") return true end
     local per = product_amount(r, job.recipe)
     job.runs = math.ceil(job.count / per)
+    m.belts_at = job.here and m.entity.position or nil -- (a roamer's batch: the belts where it is, see belt_lanes)
     local missing = gather(m, r, job.runs)
+    m.belts_at = nil
+    if missing and job.auto then return true end -- (gone since it looked: no matter)
     if missing then
       local parts = {}
       local last
@@ -1085,7 +1128,7 @@ JOBS.craft = function(m, job)
   if e.crafting_queue_size > 0 then return false end
   job.n = job.started
   if job.keep then return true end -- (its own gun or ammo: equipped already)
-  say(m, "Made " .. job.started .. " " .. pretty(job.recipe) .. ".", job.goal and "quiet")
+  say(m, "Made " .. job.started .. " " .. pretty(job.recipe) .. ".", (job.goal or job.auto) and "quiet")
   table.insert(m.jobs, 2, { kind = "deliver" })
   return true
 end
@@ -1812,7 +1855,7 @@ plan = function(m, item, n, depth)
   end
   local mr = machine_recipe(e.force, item)
   if mr then
-    -- made in a machine: first what's already made, in chests (160 tiles) or on belts (80) beyond the usual reach
+    -- made in a machine: first what's already made, in chests (160 tiles), else on belts (80) beyond the usual reach
     -- (not in a keep-out zone or a bpgen line, nor at hand already: chests and belts near you or home count as had),
     -- fetched and brought home. None anywhere: not looked for again for 10 s; a place that gave nothing: a minute
     m.far_skip = m.far_skip or {}
@@ -1828,19 +1871,24 @@ plan = function(m, item, n, depth)
           if not bd or d < bd then best, bd = ent, d end
         end
       end
+      -- (a big base has thousands of each: one count per entity, and the belts only when no chest has any)
       for _, c in pairs(e.surface.find_entities_filtered({ type = { "container", "logistic-container" }, force = e.force,
         position = e.position, radius = 160 })) do
         local inv = c.get_inventory(defines.inventory.chest)
         if inv then consider(c, inv.get_item_count(item), RADIUS) end
       end
-      for _, b in pairs(e.surface.find_entities_filtered({ type = { "transport-belt", "underground-belt", "splitter" },
-        force = e.force, position = e.position, radius = 80 })) do
-        local n = 0
-        for i = 1, b.get_max_transport_line_index() do n = n + b.get_transport_line(i).get_item_count(item) end
-        consider(b, n, 25)
+      for _, b in pairs(not best and e.surface.find_entities_filtered({ type = { "transport-belt", "underground-belt",
+        "splitter" }, force = e.force, position = e.position, radius = 80 }) or {}) do
+        consider(b, b.get_item_count(item), 25)
       end
       if best then return { kind = "collect", item = item, at = best.position, count = math.min(n, 200), far = true } end
-      m.far_skip[item] = game.tick + 600
+      for _, o in pairs(crew()) do -- (none for the crew close by either: they'd search the same chests and belts)
+        local oe = o.entity
+        if o.owner == m.owner and oe.valid and oe.surface == e.surface and dist2(oe.position, e.position) < 32 * 32 then
+          o.far_skip = o.far_skip or {}
+          o.far_skip[item] = game.tick + 600
+        end
+      end
     end
     local machines = machines_for(m, mr, item)
     if #machines == 0 then return need_machine(m, mr, item, depth) end
@@ -2067,11 +2115,30 @@ local function arm(m)
     end
     table.sort(GUNS, function(a, b) return prototypes.item[a].attack_parameters.range > prototypes.item[b].attack_parameters.range end)
   end
+  -- what's at hand (as available() counts it): one look at every chest, lane and the network for all the items
+  -- asked about, not one each (a big base has hundreds of each near home)
+  local stock
+  local function has(item)
+    if inv.get_item_count(item) > 0 then return true end
+    if not stock then
+      stock = {}
+      local function add(list)
+        for _, it in pairs(list) do
+          if it.quality == "normal" then stock[it.name] = (stock[it.name] or 0) + it.count end
+        end
+      end
+      for _, src in pairs(sources(m)) do add(src.get_contents()) end
+      for _, l in pairs(belt_lanes(m)) do add(l.get_contents()) end
+      local net = network(m)
+      if net then add(net.get_contents()) end
+    end
+    return (stock[item] or 0) > 0
+  end
   local armor = e.get_inventory(defines.inventory.character_armor)
   if armor and armor.is_empty() then -- the best armor to hand (most resistance)
     local best, bs
     for name, it in pairs(prototypes.get_item_filtered({ { filter = "type", type = "armor" } })) do
-      if not it.hidden and (inv.get_item_count(name) > 0 or available(m, name) > 0) then
+      if not it.hidden and has(name) then
         local score = 0
         for _, r in pairs(it.resistances or {}) do score = score + (r.percent or 0) * 100 + (r.decrease or 0) end
         if not bs or score > bs then best, bs = name, score end
@@ -2089,7 +2156,6 @@ local function arm(m)
       if n >= ammo[i].count then ammo[i].clear() elseif n > 0 then ammo[i].count = ammo[i].count - n end
     end
   end
-  local function has(item) return inv.get_item_count(item) > 0 or available(m, item) > 0 end
   local function makes(item) local r = e.force.recipes[item] return r and r.enabled end
   -- for gun g: 2 and the ammo when some is in stock, 1 when some can be made, 0 when neither
   local function ammo_for(g)
@@ -2186,7 +2252,8 @@ local function fight(m)
   end
   if m.defend == false and not (m.jobs[1] and m.jobs[1].kind == "attack") then m.target = nil return end
   local range = gun_range(m)
-  if range == 0 then
+  if range == 0 and game.tick >= (m.arm_at or 0) then -- (no gun: looked for every 5 s, not each half second)
+    m.arm_at = game.tick + 300
     arm(m)
     range = gun_range(m)
   end
@@ -2226,12 +2293,15 @@ end
 
 -- Your buildings under attack: every armed fighter of the crew within 160 tiles drops what it's doing and rushes
 -- over (flying, with jetpacks), fights there until it has been quiet for 5 seconds, then goes back to its work, or
--- with none, back to where it stood (a trip of its own, see JOBS.back)
-local function alarm(surface, force, ent)
+-- with none, back to where it stood (a trip of its own, see JOBS.back). who: you (your character) hit: your own
+-- crew that roam or follow you come to you and fight round you wherever you go, till it's been quiet 10 seconds
+local function alarm(surface, force, ent, who)
   local pos = ent.position
+  local owner = who and who.player and who.player.index
   for _, m in pairs(crew()) do
     local e = m.entity
     if e.valid and e.force == force and e.surface == surface and m.defend ~= false and not m.retreat
+      and (not who or (m.roam or m.follow) and (not who.player or m.owner == owner))
       and dist2(e.position, pos) < 160 * 160 and not (m.jobs[1] and (m.jobs[1].kind == "defend" or m.jobs[1].kind == "attack")) then
       if gun_range(m) == 0 then arm(m) end
       if gun_range(m) > 0 then
@@ -2241,12 +2311,13 @@ local function alarm(surface, force, ent)
           m.trip_from = j and j.at or { x = e.position.x, y = e.position.y }
           if j then table.remove(m.jobs, 1) end
         end
-        table.insert(m.jobs, 1, { kind = "defend", at = { x = pos.x, y = pos.y }, n = 0, skip = {} })
+        table.insert(m.jobs, 1, { kind = "defend", at = { x = pos.x, y = pos.y }, who = who, n = 0, skip = {} })
         m.wait_until = nil
         if game.tick - (storage.alarm_said or -3600) > 1800 then
           storage.alarm_said = game.tick
-          say(m, line(m, "alarm", { item = pretty(ent.name), at = pos }))
-          remember(m.owner, "biters attacked the " .. pretty(ent.name) .. "; the crew went to fight them")
+          say(m, line(m, who and "help" or "alarm", { item = pretty(ent.name), at = pos }))
+          remember(m.owner, who and "biters went for the player; the crew came to help"
+            or ("biters attacked the " .. pretty(ent.name) .. "; the crew went to fight them"))
         end
       end
     end
@@ -2257,6 +2328,11 @@ JOBS.defend = function(m, job)
   local e = m.entity
   if m.retreat then return false end
   if gun_range(m) == 0 then return true end
+  if job.who then -- (you: wherever you are now; a new route only when you've gone 4 tiles)
+    if not (job.who.valid and job.who.surface == e.surface) then return true end
+    local p = job.who.position
+    if dist2(job.at, p) > 16 then job.at = { x = p.x, y = p.y } end
+  end
   local enemy = e.surface.find_nearest_enemy({ position = job.at, max_distance = 32, force = e.force })
   local d2 = dist2(e.position, enemy and enemy.position or job.at)
   if enemy then
@@ -2266,7 +2342,7 @@ JOBS.defend = function(m, job)
     return false
   end
   job.quiet = job.quiet or game.tick
-  if game.tick - job.quiet > 300 then return true end
+  if game.tick - job.quiet > (job.who and 600 or 300) then return true end
   if d2 > 24 * 24 and fly(m, job.at) then return false end
   go(m, job.at, 8)
   return false
@@ -2438,7 +2514,8 @@ end
 -- around, and deals with what it finds as a player would: goes after a nest when it's armed and may fight, runs poles
 -- to a machine standing dark (pole by pole, while poles are all it takes) and mentions machines starved of inputs or
 -- backed up (nothing at all taking their output; a full belt is no news). Each thing once; those remarks at most every
--- 3 minutes a member.
+-- 3 minutes a member. Also: upgrade marks round where it walks (idle), the next tier for what's in stock
+-- (REMARKS.tiers), and now and then a few of what runs short, hand-crafted (REMARKS.craft). You hit: they come (alarm).
 
 local S = defines.entity_status
 local REMARKS = {}
@@ -2463,6 +2540,89 @@ function REMARKS.taken(f)
     if l.loader_type == "output" and l.loader_container == f then return true end
   end
   return false
+end
+
+-- a better tier for what it walks past (setting "Crew upgrade to better tiers"): your machines, inserters, furnaces
+-- whose next tier is in stock already (pockets, chests, belts, network: never made for it) get the upgrade mark, a few
+-- a look and no more than there are items, and the upgrade job does the rest (recipe, contents, direction kept). Never
+-- belts (a partly upgraded belt only holds the rest back), nor in a keep-out place or a bpgen line. Its own marks are
+-- kept in storage.tier_marks (unit number -> entity): one it can't carry out after all it takes back (next_upgrade)
+function REMARKS.tiers(m)
+  local e = m.entity
+  local on = storage.test_tiers
+  if on == nil then
+    local pl = m.owner and game.get_player(m.owner) or not m.owner and any_player()
+    on = not pl or player_setting(pl, "ai-crew-tier-upgrades") ~= false
+  end
+  if not on or m.auto == false then return end
+  if not REMARKS.tier_names then -- (prototypes with a next tier, belts aside: once a session)
+    local names, belts = {}, { ["transport-belt"] = true, ["underground-belt"] = true, splitter = true, loader = true,
+      ["loader-1x1"] = true, ["linked-belt"] = true, ["lane-splitter"] = true }
+    for name, p in pairs(prototypes.entity) do
+      if p.next_upgrade and not belts[p.type] then names[#names + 1] = name end
+    end
+    REMARKS.tier_names = names
+  end
+  if #REMARKS.tier_names == 0 then return end
+  storage.tier_marks = storage.tier_marks or {}
+  local tm, s = storage.tier_marks, e.surface
+  for k, o in pairs(tm) do if not (o.valid and o.to_be_upgraded()) then tm[k] = nil end end
+  local boxes, have, n = {}, {}, 0
+  for _, g in pairs(storage.goals or {}) do if g.line and g.line.box then boxes[#boxes + 1] = g.line.box end end
+  for _, f in pairs(s.find_entities_filtered({ name = REMARKS.tier_names, force = e.force, position = e.position,
+    radius = 20, limit = 40 })) do
+    local up = f.prototype.next_upgrade
+    local it = up and not f.to_be_upgraded() and not kept_out(s, f.position) and up.items_to_place_this
+      and up.items_to_place_this[1]
+    for _, box in ipairs(boxes) do if it and in_box(box, f.position, 1) then it = nil end end
+    if it then
+      local q = f.quality.name
+      local k = it.name .. "/" .. q
+      if have[k] == nil then -- (what's in stock, less what their marks already wait for)
+        have[k] = e.get_main_inventory().get_item_count({ name = it.name, quality = q }) + available(m, it.name, q)
+        for _, o in pairs(tm) do
+          local oi = upgrade_item(o)
+          if oi and oi.name == it.name and oi.quality == q then have[k] = have[k] - oi.count end
+        end
+      end
+      local to = { name = up.name, quality = q }
+      if have[k] >= (it.count or 1) and f.order_upgrade({ target = to, force = f.force }) then
+        have[k], n = have[k] - (it.count or 1), n + 1
+        tm[f.unit_number] = f
+        if n >= 3 then break end
+      end
+    end
+  end
+  if n == 0 then return end
+  m.jobs[#m.jobs + 1] = { kind = "upgrade", auto = true, n = 0, skip = {}, at = { x = e.position.x, y = e.position.y } }
+  return true
+end
+
+-- now and then (every 3 to 5 minutes) a roamer hand-crafts a few (5 to 10) of what the base uses more of than it
+-- makes: a recipe for the hand, with what it takes at hand (pockets, chests, the belts where it stands: only what the
+-- batch takes), brought to you after. Quietly: a bubble
+function REMARKS.craft(m)
+  if m.auto == false or game.tick < (m.craft_at or 0) then return end
+  m.craft_at = game.tick + 1800 -- (nothing to make: another look in 30 s)
+  local e = m.entity
+  local count
+  m.belts_at = { x = e.position.x, y = e.position.y }
+  local item = REMARKS.shortage(m.owner, e.surface, e.force, function(name, d)
+    local r = d >= 10 and handcraft_recipe(e.force, name)
+    if not r then return false end
+    local per = product_amount(r, name)
+    for _, c in ipairs({ math.min(math.max(math.ceil(d / 30), 5), 10), 5 }) do
+      if not gather(m, r, math.ceil(c / per), true) then count = c return true end
+    end
+    return false
+  end)
+  m.belts_at = nil
+  if not item then return end
+  m.craft_at = game.tick + math.random(10800, 18000)
+  m.jobs[#m.jobs + 1] = { kind = "craft", recipe = item, count = count, auto = true, here = true, n = 0, skip = {} }
+  say(m, "We go through more " .. pretty(item) .. " than we make. A few more won't hurt.", "quiet")
+  remember(m.owner, m.name .. " hand-crafted some " .. pretty(item) .. " (more used than made)")
+  return true
 end
 
 -- one look round where it stands; true when it found something to do or say
@@ -2536,7 +2696,7 @@ local function roam(m)
   if m.roam_walk then -- got there: a look round, then a while here
     m.roam_walk = nil
     m.roam_at = game.tick + math.random(300, 900)
-    if notice(m) then return end
+    if notice(m) or REMARKS.tiers(m) or REMARKS.craft(m) then return end
   end
   if game.tick < (m.roam_at or 0) then return end
   local a, r = math.random() * 2 * math.pi, 6 + math.random() * (ROAM - 6)
@@ -2557,10 +2717,18 @@ local function idle(m)
       if e.surface.count_entities_filtered(area) > 0 then kind = "deconstruct" end
       area.to_be_deconstructed, area.to_be_upgraded, area.force = nil, true, e.force
       if not kind and e.surface.count_entities_filtered(area) > 0 then kind = "upgrade" end
+      local at
+      if not kind and m.roam then -- (roaming: the marks round where it is too, out past the work area)
+        area.position = e.position
+        if e.surface.count_entities_filtered(area) > 0 then
+          kind, at = "upgrade", { x = e.position.x, y = e.position.y }
+        end
+        area.position = anchor(m)
+      end
       area.to_be_upgraded, area.type = nil, { "entity-ghost", "tile-ghost" }
       if not kind and e.surface.count_entities_filtered(area) > 0 then kind = "build" end
       if kind then
-        m.jobs[1] = { kind = kind, auto = true, n = 0, skip = {} }
+        m.jobs[1] = { kind = kind, auto = true, n = 0, skip = {}, at = at }
         return
       end
     end
@@ -2666,7 +2834,10 @@ map_marker = function(e, name, color)
     scale = 1.2, alignment = "center", vertical_alignment = "bottom", render_mode = "chart" })
 end
 
-local function hire(name, surface, position, force, owner)
+-- mode: "roam", "follow" or "stay"; nil: the owner's setting "ai-crew-new-mode" (roam), with no player follow
+local function hire(name, surface, position, force, owner, mode)
+  local pl = owner and game.get_player(owner) or not owner and any_player()
+  mode = mode or pl and player_setting(pl, "ai-crew-new-mode") or "follow"
   local taken = {}
   for n in pairs(crew()) do taken[n:lower()] = true end
   if not name then
@@ -2684,7 +2855,7 @@ local function hire(name, surface, position, force, owner)
     scale = 0.9, alignment = "center" })
   map_marker(e, name, color)
   local m = { name = name, entity = e, owner = owner, home = { x = at.x, y = at.y }, jobs = {}, color = color,
-    voice = i, follow = true, phase = i * 3, mapped = true }
+    voice = i, follow = mode == "follow", roam = mode == "roam" or nil, phase = i * 3, mapped = true }
   crew()[name] = m
   return m
 end
@@ -2758,8 +2929,16 @@ end
 local function add_job(m, job)
   if job.kind == "attack" then -- (clearing nests: a trip, back where it stood after)
     m.trip_from = { x = m.entity.position.x, y = m.entity.position.y }
-  elseif not (job.kind == "remember" or job.kind == "need" or job.kind == "goal") then
+  elseif job.kind == "follow" or job.kind == "stay" or job.kind == "stop" or job.kind == "roam" then
     m.trip_from = nil
+  elseif not (job.kind == "remember" or job.kind == "need" or job.kind == "goal") then
+    -- work (get, mine, craft, build...): back where it stood after, when the player wants that, else stays there
+    local back = storage.test_back_after_orders -- (the player's "Back where they stood after orders"; tests set it)
+    if back == nil then
+      local pl = m.owner and game.get_player(m.owner) or any_player()
+      back = pl and player_setting(pl, "ai-crew-back-after-orders") or false
+    end
+    m.trip_from = back and (m.trip_from or { x = m.entity.position.x, y = m.entity.position.y }) or nil
   end
   if job.kind == "stop" then
     for _, j in pairs(m.jobs) do if j.target and j.target.valid and j.target.unit_number then claims()[j.target.unit_number] = nil end end
@@ -3091,7 +3270,8 @@ end
 -- made in the last 10 minutes (items with a recipe), and offer to deal with the worst of it: make a batch, or a
 -- production line when bpgen is there. "yes" (sure, ok, do it...) makes it the goal; "no" leaves that item alone for
 -- half an hour. Unanswered, the offer lapses after 5 minutes.
-local function shortage(owner, surface, force)
+-- (ok(name, d): only items it passes, asked of the worse ones only)
+local function shortage(owner, surface, force, ok)
   local stats = force.get_item_production_statistics(surface)
   local declined = storage.declined and storage.declined[owner or 0] or {}
   local best, bd
@@ -3102,11 +3282,12 @@ local function shortage(owner, surface, force)
         return stats.get_flow_count({ name = name, category = cat, precision_index = defines.flow_precision_index.ten_minutes, count = true })
       end
       local d = flow("output") - flow("input")
-      if d > 0 and (not bd or d > bd) then best, bd = name, d end
+      if d > 0 and (not bd or d > bd) and (not ok or ok(name, d)) then best, bd = name, d end
     end
   end
   return best, bd
 end
+REMARKS.shortage = shortage -- (for a roamer's batch, REMARKS.craft: defined above this)
 
 local function propose(owner)
   local members = members_of(owner)
@@ -3403,7 +3584,9 @@ TOGGLES = {
   { "chatter", "Crew chatter while you're away", "After 2 minutes without input, every minute or so" },
   { "hints", "Crew give hints", "Research to start, starved or backed-up machines, power, oversupply, what to do next when nothing's happened for 5 minutes" },
   { "machines", "Crew build machines", "When something they need is only made in a machine (plates in a furnace) and none is free, they may put one down. Off: never; they use your machines and fetch what's made from chests and belts first either way" },
+  { "back-after-orders", "Back where they stood after orders", "Sent off to get, mine, craft, build or deliver something, they go back to where they stood once it's done and there's nothing more to do (when more than 16 tiles away, and unless they roam or follow you). Off: they stay where the work ended" },
   { "jetpack", "Crew jetpacks", "They fly over what's in their way (and to a fight); off: they step through it a few tiles at a time" },
+  { "tier-upgrades", "Crew upgrade to better tiers", "Roaming, they swap machines, inserters and furnaces for the next tier when it's already in your pockets, chests or network (never made for it). Not belts" },
 }
 
 local function ai_short(player)
@@ -3770,6 +3953,12 @@ local function act(player, action, who, scripted)
       r.add({ type = "label", name = "aic_vol_" .. v[1], caption = cur .. "%" })
     end
     local own = theme.fold(scroll, "What the crew do", false)
+    r = row(own)
+    r.add({ type = "label", caption = "New crew" })
+    local modes, cur_m, mi = { "roam", "follow", "stay" }, player_setting(player, "ai-crew-new-mode") or "roam", 1
+    for i, v in ipairs(modes) do if v == cur_m then mi = i end end
+    r.add({ type = "drop-down", name = "aic_set_new_mode", items = modes, selected_index = mi,
+      tooltip = "What a crew member you hire does: roam the base (and come to you when you're attacked), follow, or stay" })
     for i, c in ipairs(TOGGLES) do
       local parent = (c[1] == "voices" or c[1] == "lines-llm" or c[1] == "ada" or c[1] == "ada-llm") and voice or own
       parent.add({ type = "checkbox", name = "aic_set_" .. c[1], caption = c[2], state = player_setting(player, "ai-crew-" .. c[1]) and true or false,
@@ -4037,6 +4226,10 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(ev)
   if ev.element.name == "aic_set_ada_voice" then
     game.get_player(ev.player_index).mod_settings["ai-crew-ada-voice"] = { value = ADA_VOICES[ev.element.selected_index] or "heart" }
   end
+  if ev.element.name == "aic_set_new_mode" then
+    local v = ev.element.items[ev.element.selected_index]
+    game.get_player(ev.player_index).mod_settings["ai-crew-new-mode"] = { value = type(v) == "string" and v or "roam" }
+  end
   if ev.element.name == "aic_who" then ui(game.get_player(ev.player_index)).who = ev.element.selected_index end
 end)
 
@@ -4175,6 +4368,14 @@ script.on_event(defines.events.on_tick, function(ev)
     storage.ai = nil -- (before 0.8.0)
     storage.ai_tests = {} -- (the last session's results say nothing about now)
     for _, p in pairs(game.connected_players) do if py() and llm_settings(p).provider ~= "off" then check_ai(p) end end
+  end
+  if not jobs.warmed then -- (once a session, on this peer: Kokoro loaded now, not on the first line; no game state)
+    jobs.warmed = true
+    local p = py() and (game.is_multiplayer() and native.local_player and native.local_player()
+      and game.get_player(native.local_player()) or not game.is_multiplayer() and any_player())
+    if p and (player_setting(p, "ai-crew-voices") or player_setting(p, "ai-crew-ada")) then
+      pcall(native.call, "py", "aicrew:warm", "{}")
+    end
   end
   for name, m in pairs(crew()) do
     local e = m.entity
@@ -4332,19 +4533,22 @@ path_finished = function(ev)
 end
 script.on_event(defines.events.on_script_path_request_finished, path_finished)
 
--- your buildings hit by an enemy: the crew nearby come to defend them (once every 2 s per place)
+-- your buildings hit by an enemy: the crew nearby come to defend them (once every 2 s per place); you hit: they come
+-- to you (a crew member hit is its own fight)
 script.on_event(defines.events.on_entity_damaged, function(ev)
   local ent, by = ev.entity, ev.force
   if not (by and ent.valid and ent.force.is_enemy(by)) then return end
+  local who = ent.type == "character" and ent
+  if who and not (ent.name ~= CREW and (ent.player or storage.test_char == ent)) then return end
   storage.attacks = storage.attacks or {}
   local k = ent.surface.index
   local a = storage.attacks[k]
   if a and game.tick - a.tick < 120 and dist2(a.pos, ent.position) < 32 * 32 then return end
   storage.attacks[k] = { pos = ent.position, tick = game.tick }
-  alarm(ent.surface, ent.force, ent)
+  alarm(ent.surface, ent.force, ent, who or nil)
 end, (function()
   local f = {}
-  for _, t in ipairs({ "unit", "unit-spawner", "turret", "character", "tree", "simple-entity", "fish" }) do
+  for _, t in ipairs({ "unit", "unit-spawner", "turret", "tree", "simple-entity", "fish" }) do
     f[#f + 1] = { filter = "type", type = t, invert = true, mode = "and" }
   end
   return f
@@ -4394,8 +4598,8 @@ end, { { filter = "type", type = "character" }, { filter = "type", type = "unit"
   { filter = "type", type = "turret" } })
 
 remote.add_interface("ai-crew", {
-  hire = function(name, surface, position, force, owner)
-    local m, err = hire(name, game.get_surface(surface) or surface, position, force or "player", owner)
+  hire = function(name, surface, position, force, owner, mode) -- (mode: follow unless given, as before the setting)
+    local m, err = hire(name, game.get_surface(surface) or surface, position, force or "player", owner, mode or "follow")
     if not m then error(err) end
     return m.name
   end,
@@ -4405,6 +4609,16 @@ remote.add_interface("ai-crew", {
   -- (tests) path answers held back n ticks, as a busy pathfinder would
   test_path_delay = function(n) storage.path_delay = n end,
   test_machines = function(on) storage.test_machines = on end, -- (tests: "Crew build machines", for want of a player)
+  test_back_after_orders = function(on) storage.test_back_after_orders = on end, -- (tests: "Back where they stood...")
+  test_tiers = function(on) storage.test_tiers = on end, -- (tests: "Crew upgrade to better tiers")
+  test_char = function(c) storage.test_char = c end, -- (tests: a character standing in for the player's, when hit)
+  -- (tests) plan()'s next job for n of item, no far search skipped; its kind, or why none
+  test_plan = function(name, item, n)
+    local m = crew()[name]
+    m.far_skip = nil
+    local job, why = plan(m, item, n)
+    return job and job.kind or why
+  end,
   -- (tests) a button of the window pressed
   -- (tests) a button's action; as_player: as the player's own click (Fire asks first)
   press = function(player_index, action, who, as_player) act(game.get_player(player_index), action, who, not as_player) end,

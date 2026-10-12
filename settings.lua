@@ -19,5 +19,10 @@ data:extend({
   { type = "bool-setting", name = "ai-crew-hints", setting_type = "runtime-per-user", default_value = true, order = "h2" },
   { type = "bool-setting", name = "ai-crew-jetpack", setting_type = "runtime-per-user", default_value = true, order = "h" },
   { type = "bool-setting", name = "ai-crew-machines", setting_type = "runtime-per-user", default_value = true, order = "h3" },
+  { type = "bool-setting", name = "ai-crew-back-after-orders", setting_type = "runtime-per-user", default_value = false,
+    order = "h4" },
+  { type = "bool-setting", name = "ai-crew-tier-upgrades", setting_type = "runtime-per-user", default_value = true, order = "h5" },
+  { type = "string-setting", name = "ai-crew-new-mode", setting_type = "runtime-per-user", default_value = "roam",
+    allowed_values = { "roam", "follow", "stay" }, order = "g2" },
   { type = "bool-setting", name = "ai-crew-ada-llm", setting_type = "runtime-per-user", default_value = false, order = "f" },
 })

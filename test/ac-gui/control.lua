@@ -53,7 +53,20 @@ local steps = {
   [1300] = function() shot("card") end,
   -- the window's layout: its settings behind the gear, Docked off (all inside), Fire asking first
   [1302] = function() game.get_player(1).selected = nil remote.call("ai-crew", "press", 1, "settings") end,
-  [1330] = function() shot("settings") end,
+  [1330] = function()
+    shot("settings")
+    -- the settings' controls, the newer ones too: which are there
+    local screen = game.get_player(1).gui.screen
+    if not screen.aic_window__menu then remote.call("ai-crew", "press", 1, "settings") end -- (opened, if it was shut)
+    local menu = screen.aic_window__menu or screen.aic_window
+    local function find(el, name) if el.name == name then return el end for _, c in pairs(el.children) do local r = find(c, name) if r then return r end end end
+    local missing = {}
+    for _, n in ipairs({ "aic_set_voice-volume", "aic_set_ada-volume", "aic_set_lines-llm", "aic_set_machines",
+      "aic_set_back-after-orders", "aic_set_tier-upgrades", "aic_set_new_mode", "aic_set_ada_voice" }) do
+      if not (menu and find(menu, n)) then missing[#missing + 1] = n end
+    end
+    storage.controls = #missing == 0 and "all there" or ("missing " .. table.concat(missing, ","))
+  end,
   [1332] = function()
     local screen = game.get_player(1).gui.screen
     if screen.aic_window__menu then screen.aic_window__menu.destroy() end
@@ -77,6 +90,7 @@ local steps = {
       .. " | layout: rail " .. tostring(game.get_player(1).gui.screen.aic_window__left ~= nil) .. ", dock "
       .. tostring(game.get_player(1).gui.screen.aic_window__bottom ~= nil) .. ", fire asks "
       .. tostring(game.get_player(1).gui.screen.fstd_confirm_aic_fire ~= nil)
+      .. " | settings controls: " .. tostring(storage.controls)
       .. " | hover: " .. (game.get_player(1).gui.screen.aic_card and "card"
         or native and (native.call("entityinfo", "status", "") or ""):find('"shown":[1-9]') and "rows in the game's panel" or "nothing"))
     helpers.write_file("ac-gui-done.txt", "done")

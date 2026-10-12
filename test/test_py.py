@@ -92,6 +92,46 @@ a = json.loads(aicrew.ask(json.dumps({"message": "help", "to": ["Juno"], "contex
 assert "{" not in a["replies"][0]["text"] and "audit" in a["replies"][0]["text"], a
 aicrew.chat = real_chat
 aicrew._history.clear()
+# warm: Kokoro loaded and run once on a thread, nothing raised without it, once only when it worked
+real_model = aicrew.kokoro_model
+
+
+def warm_wait():
+    if aicrew._warming:
+        aicrew._warming.join(5)
+        assert not aicrew._warming.is_alive()
+
+
+def no_kokoro():
+    raise ImportError("kokoro_onnx")
+
+
+aicrew.kokoro_model = no_kokoro
+assert aicrew.warm("{}") == "ok" and aicrew.warm("{}") == "ok"
+warm_wait()
+assert not aicrew._warmed
+aicrew.kokoro_model = lambda: None  # (files still coming: tried again on the next call)
+assert aicrew.warm("{}") == "ok"
+warm_wait()
+assert not aicrew._warmed
+
+
+class FakeKokoro:
+    calls = 0
+
+    def create(self, text, **kw):
+        FakeKokoro.calls += 1
+        return [0.0], 24000
+
+
+aicrew.kokoro_model = FakeKokoro
+assert aicrew.warm("{}") == "ok"
+warm_wait()
+assert aicrew.warm("{}") == "ok" and aicrew.warm("{}") == "ok"
+warm_wait()
+assert aicrew._warmed and FakeKokoro.calls == 1, FakeKokoro.calls
+aicrew.kokoro_model = real_model
+aicrew._warmed, aicrew._warming = False, None
 print("offline OK")
 
 if "--live" in sys.argv:

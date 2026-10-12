@@ -87,7 +87,9 @@ pump, boiler, steam engine, each trial-placed and kept only when its pipes conne
 furnaces and burner drills near you are kept fuelled whenever there's coal or wood about; with none in stock while
 they run dry, the crew go and get some (coal from the nearest patch, else wood), then fuel them. From a trip of their
 own like that (fuel, what a need or the goal takes, fishing, work round the base, a gun or ammo made for itself), once there's nothing more to do,
-they go back to where they stood (more than 16 tiles away, and unless they roam or follow you). What they can't do: research
+they go back to where they stood (more than 16 tiles away, and unless they roam or follow you). With **Back where they
+stood after orders** ticked (the gear, off by default) they do the same after your orders (get, mine, craft, build,
+deliver); follow, stay, stop and roam forget where they stood. What they can't do: research
 (they tell you what needs researching), fluids other than water to steam, and planning big layouts.
 - **Chat box**: plain orders ("get 50 iron ore", "craft 10 gears", "goal 200 iron gear wheel") run as is; anything
   else goes to the AI.
@@ -108,7 +110,9 @@ seconds, then goes back to its work (with none, back to where it stood). In a fi
 enemy), step back from a biter right on them and keep shooting, and eat a fish whenever 80 health is missing (sooner
 below half). With no fish left anywhere in reach they go fishing when there's a fish within 250 tiles: the nearest
 fish in the water, caught by hand, up to 20, for a minute at most (a fish they can't get to in 15 seconds they leave).
-Then they go back to where they stood (as from any trip of their own, above).
+Then they go back to where they stood (as from any trip of their own, above). **You under attack**: your crew who roam
+or follow you (not one told to stay) within 160 tiles come to you, keep with you as you move, fight round you until
+it has been quiet for 10 seconds, then go back to roaming (or following).
 
 **Cars and trains for long trips** (over 80 tiles). A train of yours standing at a stop within 24 tiles of them,
 whose schedule goes to a stop within 60 tiles of where they're headed: they get on, ride along (its schedule is left
@@ -128,7 +132,14 @@ as much as you: their body is thinner than yours to begin with.
 40 tiles of you (of home when you're not there), stops a while, looks around and deals with what it finds as a player
 would: goes after a nest or worm when it's armed and **Fight** is ticked, runs poles to a machine standing dark (while
 poles are all it takes; with **Auto** on), and mentions machines starved of inputs or backed up (nothing taking their output at all; a full belt is no news) (at most every 3
-minutes). It still builds, clears and works on the goal like everyone else, and catches up when you walk off.
+minutes). It still builds, clears and works on the goal like everyone else, and catches up when you walk off. Round
+where it walks it also carries out the upgrade planner's marks (out past the 48 tiles round you), swaps your
+machines, inserters and furnaces for the next tier when that item is already in your pockets, chests, belts or network
+(a few a look, never crafted or mined for it, never belts: a partly upgraded belt only holds the rest back; setting
+"Crew upgrade to better tiers", on by default), and every 3 to 5 minutes hand-crafts a few (5 to 10) of what the base
+uses more of than it makes, from what's at hand (the belts where it stands too, only what the batch takes), brought to
+you after. **Roam is how a new crew member starts** (setting "New crew start out": roam, follow or stay; the window's
+gear, "What the crew do").
 
 **Notes and keep-out places.** "remember the north is for iron" keeps a note where you stand; "keep out" (also
 "stay out", "don't touch this", "hands off", "leave this alone") makes the 24 tiles round you a place they keep out of,
@@ -235,11 +246,15 @@ python test/run.py ac-train 9100   headless game: ride a train to the far stop, 
 python test/run.py ac-belt 6100    headless game: across a field of running belts and back; standing on a belt, not carried off
 python test/run.py ac-bots 3610   headless game: crafts gears from plates on a belt; steps off a ghost for construction robots
 python test/run.py ac-trip 7300   headless game: no fuel: mine coal 60 tiles out, fuel a furnace at home, back where it stood; hurt: falls back, heals, back again
+python test/run.py ac-orders 6100 headless game: "mine 10 stone" 80 tiles out: back where it stood with the setting on, not off
 python test/run.py ac-backed 3100  headless game: drills onto ground are "backed up"; drills onto a full belt are not
 python test/run.py ac-plates 6100  headless game: plates fetched from a chest 100 tiles out, no furnace; machines off: none
+python test/run.py ac-perf 4720    headless game: a big base (2000 chests, 10000 belts): the crew's cost a tick, a plan, a hint
 python test/run.py ac-hint 18800   headless game: starved machines pointed out (once), research suggested after 5 idle minutes
 python test/run.py ac-jet 6100     headless game: a rock inside a closed ring of walls: fly in, mine it, fly out
 python test/run.py ac-roam 36010   headless game: roams round home, powers a dark assembler, finds and kills a worm
+python test/run.py ac-roam2 36010  headless game: roaming: a far upgrade mark done; next tiers from the chest (setting off:
+                                   none; belts never); gears hand-crafted from belt plates; comes to a bitten character
 python test/run.py ac-fight        headless game: arms up, kills biters, clears a spawner and a worm, comes back, respawns
 python test/run.py ac-line 72010   headless game: a goal with a line (a stand-in bpgen places it): built, fed, emptied
 python test/run.py ac-power 144010 headless game: an engine goal with no assembler and no power: they build both

@@ -237,6 +237,14 @@ return {
       "Bad biters! Stop that!" },
     laconic = { "Attack. Going.", "On it.", "{item}. Moving.", "Going." },
   },
+  help = { -- (the player attacked)
+    gruff = { "They're on you. Coming.", "Hold still. I've got them." },
+    upbeat = { "They're after you! On my way!", "Hang on, I'm coming!" },
+    precise = { "Hostiles on you. Responding.", "You're under attack. En route." },
+    eager = { "They're on you! I'm coming! I'm coming!", "Hold on, I've got your back!" },
+    cheerful = { "Hey! Leave them alone! Coming!", "Eek, biters on you! Hang on!" },
+    laconic = { "Coming.", "On my way." },
+  },
   fishing = {
     gruff = { "Out of fish. Going fishing. Don't laugh.", "No fish left. I'll catch some.", "Fish run. Somebody has to." },
     upbeat = { "Fishing trip! We're out of fish.", "Out of fish, off to the water!", "Fish time! Back with dinner!" },
