@@ -71,15 +71,17 @@ line".
 
 **They work for what they lack.** A ghost whose item nobody has, a craft order short on ingredients, or "get" for
 something only a machine makes becomes a *need*, worked on before the goal. The plan for any item, step by step:
-take it if it's around; mine it if there's a source nearby (ore, stone, coal, trees); hand-craft it; otherwise run its
-recipe in a free machine near you: load the ingredients, fuel burners (coal, else wood, mined if need be), collect the
+take it if it's around; mine it if there's a source nearby (ore, stone, coal, trees); hand-craft it; for what only a
+machine makes (plates), first go and get what's already made, in a chest up to 160 tiles away or on a belt up to 80,
+and bring it home; otherwise run its recipe in a free machine near you: load the ingredients, fuel burners (coal, else wood, mined if need be), collect the
 output. They borrow only machines of yours that no inserter feeds or empties (anything in a production line is left
 alone), and put their own on their grid, 3 tiles clear of your buildings, ghosts and floors (concrete, paths),
 beside the ones they built before; never more than three of a kind. Vanilla furnaces pick their own recipe; assembler-type machines (assemblers, and overhaul mods' furnaces that
 need a recipe chosen) get it set when they're empty and idle.
 
 **They build what the plan needs.** No free machine for a recipe? They make one (burner-powered kinds first, so a
-stone furnace for smelting) and set it up near you. An electric machine standing dark gets power: poles grown from
+stone furnace for smelting) and set it up near you; with "Crew build machines" off (the window's gear, or Mod
+settings) they never do, and say what they'd need. An electric machine standing dark gets power: poles grown from
 the nearest powered pole, or from a generator; with no power anywhere they build steam at the nearest water (offshore
 pump, boiler, steam engine, each trial-placed and kept only when its pipes connect, so modded ones work too). Boilers,
 furnaces and burner drills near you are kept fuelled whenever there's coal or wood about; with none in stock while
@@ -234,6 +236,7 @@ python test/run.py ac-belt 6100    headless game: across a field of running belt
 python test/run.py ac-bots 3610   headless game: crafts gears from plates on a belt; steps off a ghost for construction robots
 python test/run.py ac-trip 7300   headless game: no fuel: mine coal 60 tiles out, fuel a furnace at home, back where it stood; hurt: falls back, heals, back again
 python test/run.py ac-backed 3100  headless game: drills onto ground are "backed up"; drills onto a full belt are not
+python test/run.py ac-plates 6100  headless game: plates fetched from a chest 100 tiles out, no furnace; machines off: none
 python test/run.py ac-hint 18800   headless game: starved machines pointed out (once), research suggested after 5 idle minutes
 python test/run.py ac-jet 6100     headless game: a rock inside a closed ring of walls: fly in, mine it, fly out
 python test/run.py ac-roam 36010   headless game: roams round home, powers a dark assembler, finds and kills a worm

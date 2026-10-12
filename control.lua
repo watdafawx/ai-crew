@@ -1092,7 +1092,8 @@ end
 
 JOBS.fetch = function(m, job)
   local got = take(m, job.item, job.count, nil, true)
-  say(m, got > 0 and ("Got " .. got .. " " .. pretty(job.item) .. " from the chests.") or ("No " .. pretty(job.item) .. " in the chests."),
+  say(m, got > 0 and ("Got " .. got .. " " .. pretty(job.item) .. " from the chests.") or job.why
+    or ("No " .. pretty(job.item) .. " in the chests."),
     got > 0 and job.goal and "quiet" or nil)
   if got > 0 then table.insert(m.jobs, 2, { kind = "deliver" }) end
   return true
@@ -1756,6 +1757,14 @@ end
 -- no free machine for recipe r: power one that's standing dark, else make one (burner-powered first) and set it up
 local function need_machine(m, r, item, depth)
   local e = m.entity
+  local allowed = storage.test_machines -- (the player's "Crew build machines"; tests set it here)
+  if allowed == nil then
+    local pl = m.owner and game.get_player(m.owner) or any_player()
+    allowed = not pl or player_setting(pl, "ai-crew-machines") ~= false
+  end
+  if not allowed then
+    return nil, "I'd need a machine for " .. pretty(item) .. ", and building machines is off. Some in a chest or on a belt would do."
+  end
   for _, f in pairs(e.surface.find_entities_filtered({ type = { "furnace", "assembling-machine" }, force = e.force,
     position = anchor(m), radius = RADIUS })) do
     if f.prototype.crafting_categories[r.category] and f.status == defines.entity_status.no_power then
@@ -1803,6 +1812,36 @@ plan = function(m, item, n, depth)
   end
   local mr = machine_recipe(e.force, item)
   if mr then
+    -- made in a machine: first what's already made, in chests (160 tiles) or on belts (80) beyond the usual reach
+    -- (not in a keep-out zone or a bpgen line, nor at hand already: chests and belts near you or home count as had),
+    -- fetched and brought home. None anywhere: not looked for again for 10 s; a place that gave nothing: a minute
+    m.far_skip = m.far_skip or {}
+    if game.tick >= (m.far_skip[item] or 0) then
+      local best, bd
+      local home = anchor(m)
+      local function consider(ent, n, near)
+        if n > 0 and dist2(ent.position, home) > near * near and not kept_out(ent.surface, ent.position) then
+          for _, g in pairs(storage.goals or {}) do
+            if g.line and g.line.box and in_box(g.line.box, ent.position, 1) then return end
+          end
+          local d = dist2(e.position, ent.position)
+          if not bd or d < bd then best, bd = ent, d end
+        end
+      end
+      for _, c in pairs(e.surface.find_entities_filtered({ type = { "container", "logistic-container" }, force = e.force,
+        position = e.position, radius = 160 })) do
+        local inv = c.get_inventory(defines.inventory.chest)
+        if inv then consider(c, inv.get_item_count(item), RADIUS) end
+      end
+      for _, b in pairs(e.surface.find_entities_filtered({ type = { "transport-belt", "underground-belt", "splitter" },
+        force = e.force, position = e.position, radius = 80 })) do
+        local n = 0
+        for i = 1, b.get_max_transport_line_index() do n = n + b.get_transport_line(i).get_item_count(item) end
+        consider(b, n, 25)
+      end
+      if best then return { kind = "collect", item = item, at = best.position, count = math.min(n, 200), far = true } end
+      m.far_skip[item] = game.tick + 600
+    end
     local machines = machines_for(m, mr, item)
     if #machines == 0 then return need_machine(m, mr, item, depth) end
     local per = product_amount(mr, item)
@@ -1907,23 +1946,42 @@ JOBS.feed = function(m, job)
 end
 
 -- takes the product off the belts at a line's output and delivers it
+-- what's on the belts (and, fetching from further out, in the chests) round job.at, up to job.count when it has one
 JOBS.collect = function(m, job)
   local e = m.entity
   if not go(m, job.at, math.max(e.reach_distance - 3, 2)) then return false end
   local inv = e.get_main_inventory()
-  for _, b in pairs(e.surface.find_entities_filtered({ type = { "transport-belt", "underground-belt" }, position = job.at, radius = 4 })) do
-    for lane = 1, 2 do
+  local function want() return job.count and job.count - job.n or math.huge end
+  for _, b in pairs(e.surface.find_entities_filtered({ type = { "transport-belt", "underground-belt", "splitter" }, position = job.at, radius = 4 })) do
+    for lane = 1, b.get_max_transport_line_index() do
       local tl = b.get_transport_line(lane)
-      local n = tl.get_item_count(job.item)
+      local n = math.min(tl.get_item_count(job.item), want())
       local got = n > 0 and inv.insert({ name = job.item, count = n }) or 0
       if got > 0 then
-        tl.remove_item({ name = job.item, count = got })
-        job.n = job.n + got
+        local out = tl.remove_item({ name = job.item, count = got })
+        if out < got then inv.remove({ name = job.item, count = got - out }) end
+        job.n = job.n + out
       end
     end
   end
+  for _, c in pairs(job.far and e.surface.find_entities_filtered({ type = { "container", "logistic-container" }, force = e.force,
+    position = job.at, radius = 2 }) or {}) do
+    local src = c.get_inventory(defines.inventory.chest)
+    local n = src and math.min(src.get_item_count(job.item), want()) or 0
+    local got = n > 0 and inv.insert({ name = job.item, count = n }) or 0
+    if got > 0 then
+      src.remove({ name = job.item, count = got })
+      job.n = job.n + got
+    end
+  end
   m.collected = (m.collected or 0) + job.n
-  if job.n > 0 then table.insert(m.jobs, 2, { kind = "deliver" }) end
+  if job.n > 0 then
+    table.insert(m.jobs, 2, { kind = "deliver" })
+    if job.far then say(m, "Got " .. job.n .. " " .. pretty(job.item) .. " from over there.", "quiet") end
+  elseif job.far then
+    m.far_skip = m.far_skip or {}
+    m.far_skip[job.item] = game.tick + 3600
+  end
   return true
 end
 
@@ -2644,8 +2702,11 @@ local function job_for(m, kind, item, count, extra)
       if available(m, it, nil, true) >= count then kind = "fetch"
       elseif nearest_source(m, { item = it, skip = {} }) then kind = "mine"
       elseif handcraft_recipe(m.entity.force, it) then return { kind = "craft", recipe = it, count = math.min(count, 200) }
-      elseif plan(m, it, count) then return { kind = "need", item = it, count = count }
-      else kind = "fetch" end
+      else
+        local job, why = plan(m, it, count)
+        if job then return { kind = "need", item = it, count = count } end
+        return { kind = "fetch", item = it, count = count, why = why } -- (what there is; why it can't make more)
+      end
     end
     return { kind = kind, item = it, count = count }
   elseif kind == "goal" then
@@ -3341,6 +3402,7 @@ TOGGLES = {
   { "lines-llm", "Crew word their lines with the AI", "Their news (biters, a nest, research, fishing...) in their own words: one AI request per line said out loud. Without an AI that answers, the stock lines" },
   { "chatter", "Crew chatter while you're away", "After 2 minutes without input, every minute or so" },
   { "hints", "Crew give hints", "Research to start, starved or backed-up machines, power, oversupply, what to do next when nothing's happened for 5 minutes" },
+  { "machines", "Crew build machines", "When something they need is only made in a machine (plates in a furnace) and none is free, they may put one down. Off: never; they use your machines and fetch what's made from chests and belts first either way" },
   { "jetpack", "Crew jetpacks", "They fly over what's in their way (and to a fight); off: they step through it a few tiles at a time" },
 }
 
@@ -4342,6 +4404,7 @@ remote.add_interface("ai-crew", {
   hear = function(owner, text) hear(owner, text) end,
   -- (tests) path answers held back n ticks, as a busy pathfinder would
   test_path_delay = function(n) storage.path_delay = n end,
+  test_machines = function(on) storage.test_machines = on end, -- (tests: "Crew build machines", for want of a player)
   -- (tests) a button of the window pressed
   -- (tests) a button's action; as_player: as the player's own click (Fire asks first)
   press = function(player_index, action, who, as_player) act(game.get_player(player_index), action, who, not as_player) end,
