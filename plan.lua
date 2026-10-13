@@ -885,7 +885,8 @@ local function goal_step(m)
     return
   end
   g.why = nil
-  g.step = m.name .. ": " .. (DOING_WORD[job.kind] or job.kind) .. " " .. pretty(job.item or job.recipe)
+  local what = job.item or job.recipe -- (tend has neither: it refuels the burners)
+  g.step = m.name .. ": " .. (DOING_WORD[job.kind] or job.kind) .. (what and " " .. pretty(what) or "")
   job.n, job.skip, job.goal = 0, {}, true
   m.jobs[#m.jobs + 1] = job
   return true
