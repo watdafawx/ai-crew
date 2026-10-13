@@ -1,5 +1,6 @@
 -- Real client (through the fse launcher): three crew, the window on each tab, a screenshot of each, the AI test,
--- and the card shown hovering a crew member.
+-- and the card shown hovering a crew member. Then fse-std's window scale at 150 % (0.8): drawn bigger, still on the
+-- screen with its rail and dock, put back on it from the bottom right, and by the left edge with its rail showing.
 -- (no crash-site intro: it pauses the game and waits for the player to press Tab)
 script.on_init(function()
   local fp = remote.interfaces["freeplay"]
@@ -14,6 +15,41 @@ local function tab(i)
   remote.call("ai-crew", "panel", 1, i)
   -- (by the screen's left edge, as a drag puts it: the rail is kept on the screen)
   remote.call("ai-crew", "place", 1, 40, 120)
+end
+-- (a frame's rectangle in pixels from the sizes fse-std keeps in its tags, at 100 %, times the scales)
+local function rect(el)
+  local p = game.get_player(1)
+  local t = el.tags
+  local w, h
+  if t.fstd_attach then w, h = t.fstd_attach.w, t.fstd_attach.h
+  elseif type(t.fstd_tweak) == "table" and t.fstd_tweak.width then w, h = t.fstd_tweak.width, t.fstd_tweak.height
+  else w, h = 640, 470 end
+  local sc = p.display_scale * (t.fstd_scale or (t.fstd_attach and p.gui.screen.aic_window.tags.fstd_scale) or 1)
+  return el.location.x, el.location.y, w * sc, h * sc
+end
+-- "on screen" or what sticks out: the window, its rail and dock
+local function on_screen(full)
+  local p = game.get_player(1)
+  local res = p.display_resolution
+  local out = {}
+  for _, n in ipairs({ "aic_window", "aic_window__left", "aic_window__bottom" }) do
+    local el = p.gui.screen[n]
+    if el and el.location then
+      local x, y, w, h = rect(el)
+      local bottom = full and (y + h) or (y + 30 * p.display_scale)
+      if x < 0 or y < 0 or x + w > res.width + 1 or bottom > res.height + 1 then
+        out[#out + 1] = string.format("%s %d,%d %dx%d", n, x, y, w, h)
+      end
+    end
+  end
+  return #out == 0 and "on screen" or ("OFF " .. table.concat(out, "; "))
+end
+local function scale_line(what)
+  local p = game.get_player(1)
+  local w = p.gui.screen.aic_window
+  storage.scale = (storage.scale or "") .. string.format(" | %s: scale %s, %s (%dx%d at ui %s)", what,
+    tostring(w and w.tags.fstd_scale), on_screen(what ~= "left edge"), p.display_resolution.width,
+    p.display_resolution.height, p.display_scale)
 end
 local steps = {
   [60] = function()
@@ -82,7 +118,28 @@ local steps = {
     if b then remote.call("ai-crew", "press", 1, "fire", b.tags.who, true) end
   end,
   [1390] = function() shot("fire") end,
-  [1400] = function()
+  -- the window scale: from the bottom right at 100 % (half off the screen), then 150 %: brought back on the screen
+  [1392] = function()
+    local screen = game.get_player(1).gui.screen
+    storage.fire_asks = screen.fstd_confirm_aic_fire ~= nil
+    if screen.fstd_confirm_aic_fire then screen.fstd_confirm_aic_fire.destroy() end
+    remote.call("ai-crew", "place", 1, 9999, 9999)
+  end,
+  [1394] = function()
+    if remote.interfaces["fse-std"].set_window_scale then remote.call("fse-std", "set_window_scale", 1, 150) end
+  end,
+  [1400] = function() scale_line("150 %") remote.call("ai-crew", "press", 1, "settings") end,
+  [1420] = function() shot("scale150") end,  -- (with its settings: Size after Docked)
+  [1440] = function()
+    local screen = game.get_player(1).gui.screen
+    local function find(el, t) if el.type == t and el.tags.fstd_scale_pick then return el end for _, c in pairs(el.children) do local r = find(c, t) if r then return r end end end
+    storage.size = screen.aic_window__menu and find(screen.aic_window__menu, "drop-down") and "there" or "missing"
+    if screen.aic_window__menu then screen.aic_window__menu.destroy() end
+    remote.call("ai-crew", "place", 1, 0, 120)  -- (by the left edge: the rail kept on the screen)
+  end,
+  [1445] = function() scale_line("left edge") end,
+  [1470] = function() shot("scale150-left") end,
+  [1500] = function()
     local key = game.get_player(1).mod_settings["ai-crew-api-key"].value
     local a = remote.call("ai-crew", "ai_status", 1) or {}
     helpers.write_file("ac-gui-result.txt", string.format("key saved: %s | provider from it: %s | key shown: %s | error: %s",
@@ -91,8 +148,9 @@ local steps = {
       .. tostring(game.get_player(1).gui.screen.aic_window__bottom ~= nil) .. " (width "
       .. tostring(game.get_player(1).gui.screen.aic_window__bottom and game.get_player(1).gui.screen.aic_window__bottom.tags.fstd_attach.w)
       .. " under a 640 window), fire asks "
-      .. tostring(game.get_player(1).gui.screen.fstd_confirm_aic_fire ~= nil)
-      .. " | settings controls: " .. tostring(storage.controls)
+      .. tostring(storage.fire_asks)
+      .. " | settings controls: " .. tostring(storage.controls) .. ", Size " .. tostring(storage.size)
+      .. tostring(storage.scale)
       .. " | rail x " .. tostring(game.get_player(1).gui.screen.aic_window__left and game.get_player(1).gui.screen.aic_window__left.location.x)
       .. " | hover: " .. (game.get_player(1).gui.screen.aic_card and "card"
         or native and (native.call("entityinfo", "status", "") or ""):find('"shown":[1-9]') and "rows in the game's panel" or "nothing"))

@@ -1,4 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.19.0
+Date: 2026-10-13
+  Changes:
+    - With fse-std 0.8, the window follows fse-std's window scale ("Window size" in the per-player settings or the
+      theme window): drawn bigger or smaller than the game's GUI, its page rail, dock and settings with it. Its own
+      Size is in the gear's panel, after Docked. The optional fse-std dependency is now 0.8.0.
+    - At any window scale the dock stays as wide as the window after a resize, the settings as tall, and the window
+      is kept where its page rail shows on the screen.
+    - The dock's Deconstruct is a little wider: cut short at a large GUI scale.
+---------------------------------------------------------------------------------------------------
 Version: 0.18.1
 Date: 2026-10-12
   Changes:

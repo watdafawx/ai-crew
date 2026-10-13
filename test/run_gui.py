@@ -1,5 +1,5 @@
 """A real client through the fse launcher (python run_gui.py [test], default ac-gui: the window, every tab
-screenshotted; ac-follow: the crew follow the player through machines; ac-info: the crew's rows in the game's own
+screenshotted, then at fse-std's window scale 150 %; --scale 2: the game's GUI at 200 %; ac-follow: the crew follow the player through machines; ac-info: the crew's rows in the game's own
 info panel, grabbed from the game window). Results in run/script-output/<test>-*."""
 import json, os, shutil, subprocess, sys, time
 from pathlib import Path
@@ -9,12 +9,31 @@ ROOT = HERE.parents[1]
 NATIVE = Path(os.environ.get("FSE_DIR") or next((d / "fse" for d in ROOT.parents if (d / "fse").exists()), ROOT / "fse"))
 from factorio_paths import run_dir, watch_game  # noqa: E402
 RUN = run_dir(HERE / "run")
+
+
+def game_gui_scale(config, scale):
+    """--scale N: the game's GUI scale in the run's config.ini (manual, N = 2 for 200 %); without it, automatic again
+    (the config is kept between runs)"""
+    lines = config.read_text(encoding="utf-8").splitlines() if config.exists() else []
+    lines = [l for l in lines if not l.startswith(("ui-scale-mode=", "custom-ui-scale="))]
+    if scale:
+        add = ["ui-scale-mode=manual-pixels", f"custom-ui-scale={scale}"]
+        if "[interface]" in lines:
+            i = lines.index("[interface]") + 1
+            lines[i:i] = add
+        else:
+            lines += ["[interface]"] + add
+    config.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+SCALE = sys.argv[sys.argv.index("--scale") + 1] if "--scale" in sys.argv else None
 MODS, OUT = RUN / "gui-mods", RUN / "script-output"
 shutil.rmtree(MODS, ignore_errors=True)
 MODS.mkdir(parents=True)
 shutil.copytree(HERE.parent, MODS / "ai-crew", ignore=shutil.ignore_patterns("test", ".git", "__pycache__"))
 shutil.copytree(NATIVE / "mods" / "fse-std", MODS / "fse-std")
-TEST = sys.argv[1] if len(sys.argv) > 1 else "ac-gui"
+ARGS = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] != "--scale"]
+TEST = ARGS[0] if ARGS else "ac-gui"
 shutil.copytree(HERE / TEST, MODS / TEST)
 names = ["base", "elevated-rails", "quality", "space-age", "fse-std", "ai-crew", TEST]
 (MODS / "mod-list.json").write_text(json.dumps({"mods": [{"name": n, "enabled": True} for n in names]}))
@@ -22,7 +41,12 @@ for f in OUT.glob(TEST + "*"):
     f.unlink()
 save = RUN / (TEST + ".zip")
 save.unlink(missing_ok=True)
-launch = [str(NATIVE / "dist" / "fse-launcher.exe"), "--config", str(RUN / "config.ini"), "--mod-directory", str(MODS)]
+# (the scale in a config of its own; the shared config.ini never keeps one, an older run's removed)
+game_gui_scale(RUN / "config.ini", None)
+CONFIG = RUN / "config-gui.ini"
+shutil.copyfile(RUN / "config.ini", CONFIG)
+game_gui_scale(CONFIG, SCALE)
+launch = [str(NATIVE / "dist" / "fse-launcher.exe"), "--config", str(CONFIG), "--mod-directory", str(MODS)]
 subprocess.run(launch + ["--create", str(save)], capture_output=True)
 game = watch_game(launch + ["--load-game", str(save)])
 start = time.time()

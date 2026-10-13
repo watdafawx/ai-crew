@@ -9,9 +9,11 @@ player and the server on FSE, with `fse-std`).
 
 ## Themes
 
-The crew window follows the theme each player picks in [FSE std](https://github.com/watdafawx/fse#themes)'s theme window (its button on the shortcut bar), when FSE std 0.6+ is installed: 12 themes, colours edited live with the FSE loader. Without FSE std it looks as before.
+The crew window follows the theme each player picks in [FSE std](https://github.com/watdafawx/fse#themes)'s theme window (its button on the shortcut bar), when FSE std 0.6+ is installed: 12 themes, colours edited live with the FSE loader. Without FSE std it looks as before. With FSE std 0.8.0+ the window is drawn at FSE std's **Window size** (per-player
+setting, or the theme window), or at its own **Size** from the gear, on top of the game's GUI scale; its page rail,
+dock and settings grow with it, and it is kept where its page rail shows on the screen.
 
-![The crew window in Vulcanus, Fulgora and Aquilo](images/themes.jpg)
+![The crew window: the Crew page with the page rail and the orders for everyone docked below; the gear's settings open](images/window.jpg)
 
 ## Install
 
@@ -24,7 +26,7 @@ The crew window follows the theme each player picks in [FSE std](https://github.
 
 ## The window
 
-The crew button (top left) opens it: movable, and resizable with fse-std, in each player's theme (`/fse-theme`). Its
+The crew button (top left, lit while it is open) opens it; Esc or the X closes it. Movable, and resizable with fse-std, in each player's theme (`/fse-theme`). Its
 pages are tabs on its left edge, the orders for everyone hang below it, and the chat box sits at its bottom (plain
 orders run as is, the rest goes to the AI). The gear by the close button opens its settings. Untick **Docked** there to
 have it all inside the window; without fse-std it is.
@@ -37,7 +39,8 @@ have it all inside the window; without fse-std it is.
 - **Goal**: an item, how many to have, optionally a **Production line** at a rate (shown with bpgen); how far it is (a bar), what
   they're on; **Drop goal** stops it.
 - **Settings** (the gear): AI provider, API key, model (**Save & test** checks it for real and shows the answer or the
-  error), ADA and the voices, what the crew do on their own; **Docked**, **Theme...**, **Reset size and place**. The same
+  error), ADA and the voices, what the crew do on their own; **Docked**, **Size** (fse-std 0.8: the window drawn bigger or smaller than
+  the game's GUI, rails and dock with it), **Theme...**, **Reset size and place**. The same
   values as Settings > Mod settings > Per player.
 
 **Hover card.** Point at a crew member and a card shows under the minimap (where the game shows what's under the
@@ -287,7 +290,8 @@ python test/run.py ac-boot         headless game: from nothing, a furnace, plate
 python test/run.py ac-goal         headless game: a 10 gear goal from ore, coal and an empty furnace
 python test/run.py                 headless game: auto clear and build (crafting a missing item), mine round a wall, craft, deliver
 python test/run.py --all [-j N]    every headless case above, N games at once (default 4, below normal priority)
-python test/run_gui.py             real client (FSE launcher): every tab screenshotted, Settings saved and tested, the hover card
+python test/run_gui.py             real client (FSE launcher): every tab screenshotted, Settings saved and tested, the hover card,
+                                   then at fse-std's window scale 150 % (--scale 2: the game's GUI at 200 %)
 python test/run_gui.py ac-info     real client: the crew's rows in the game's own info panel (the game window grabbed)
 python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)
 python test/run_gui.py ac-play     real client: hire (roam), your reach copied, help when you're bitten, a following build without bouncing, a tier upgrade

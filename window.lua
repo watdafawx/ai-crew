@@ -197,7 +197,7 @@ end
 
 -- the orders for everyone, two rows of them: {caption, action, tooltip, width}
 local EVERYONE = {
-  { { "build", "build", "build-tip", 64 }, { "deconstruct", "deconstruct", "deconstruct-tip", 96 },
+  { { "build", "build", "build-tip", 64 }, { "deconstruct", "deconstruct", "deconstruct-tip", 104 },
     { "upgrade", "upgrade", "upgrade-tip", 76 }, { "deliver", "deliver", "deliver-tip", 72 } },
   { { "mode-follow", "follow", "follow-all-tip", 100 }, { "mode-roam", "roam", "roam-all-tip", 64 },
     { "stop-all", "stop", "stop-all-tip", 72 }, { "attack", "attack", "attack-tip", 100 } },
@@ -209,6 +209,21 @@ local function row_width(i)
   local w = 0
   for _, b in ipairs(EVERYONE[i]) do w = w + b[4] + 6 end
   return w - 6
+end
+
+-- (a size changed on an attached frame, given at 100 %: fse-std 0.8 writes it at the window's scale (theme.style) and
+-- keeps it as its tweak; an older one takes it as it is)
+local function set_size(el, key, v)
+  if theme.style then return theme.style(el, { [key] = v }) end
+  local tags = el.tags
+  if tags.fstd_tweak then tags.fstd_tweak[key] = v end
+  el.tags = tags
+  el.style[key] = v
+end
+
+-- (the scale the window is drawn at, on top of the game's: fse-std 0.8's per-window scale, else 1)
+local function win_scale(frame)
+  return theme and theme.scale_of and frame and frame.valid and theme.scale_of(frame) or 1
 end
 
 -- the dock: as wide as the window (less its borders), the orders in one row when they fit, else in two
@@ -245,9 +260,8 @@ local function fit_dock(player)
   end
   local tags = d.tags
   tags.fstd_attach.w = w
-  if tags.fstd_tweak then tags.fstd_tweak.width = w end
   d.tags = tags
-  d.style.width = w
+  set_size(d, "width", w)
   theme.follow(frame)
 end
 
@@ -265,9 +279,8 @@ local function fit_menu(player)
   local h = menu_height(player)
   local tags = m.tags
   tags.fstd_attach.h, tags.fstd_attach.overlap = h, h + MENU_TOP
-  if tags.fstd_tweak then tags.fstd_tweak.height = h end
   m.tags = tags
-  m.style.height = h
+  set_size(m, "height", h)
   theme.follow(player.gui.screen[WIN])
 end
 
@@ -276,7 +289,7 @@ end
 local function keep_on_screen(player, frame)
   frame = frame or player.gui.screen[WIN]
   if not (frame and frame.valid and frame.location) then return end
-  local sc, res = player.display_scale, player.display_resolution
+  local sc, res = player.display_scale * win_scale(frame), player.display_resolution  -- (sizes below at 100 %)
   local w = fstd and fstd.size(player, WIN) or 640
   local docked = theme ~= nil and theme.dock ~= nil and not ui(player).inside
   local left = docked and math.ceil((RAIL_W - 6) * sc) or 0
@@ -561,6 +574,7 @@ local function act(player, action, who, scripted)
       head.add({ type = "checkbox", name = "aic_docked", caption = { "fstd.docked" }, state = not ui(player).inside,
         tooltip = { "fstd.docked-tooltip" } })
     end
+    if fstd.size_setting then fstd.size_setting(head, WIN) end  -- (the window's own Size: fse-std 0.8)
     local scroll = m.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto" })
     scroll.style.vertically_stretchable, scroll.style.horizontally_stretchable = true, true
     local function fold(title, open)  -- (each as wide as the panel, open or folded)
