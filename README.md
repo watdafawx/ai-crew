@@ -216,6 +216,10 @@ along the bottom (name and what they're at) and rises whole under the mouse. Cli
 gear and what they carry, a stack clicked comes to you, Take all takes what they carry (the game can't open another
 character's inventory for a mod). The "Crew cards" setting (also in the window's gear panel) hides them.
 
+In the corner, a short "Everyone" card holds the window's orders for the whole crew as icon buttons: build,
+deconstruct, upgrade, deliver, follow me, roam, stop all, clear nests. The same eight are keys in Settings >
+Controls ("AI Crew: build", ... "AI Crew: clear nests"), unbound until you bind them; they work without fse too.
+
 With the fse loader (single player) the cards are a web page over the game (fse-std's shells, `web/cards.html`), in
 the player's fse-std theme; it steps aside while another window (the inventory, a machine, the pockets) is open.
 Without it (or in multiplayer) they're the game's own GUI, side by side, the same rings from `data.lua`'s styles. They
@@ -318,7 +322,7 @@ python test/run_gui.py             real client (FSE launcher): every tab screens
 python test/run_gui.py ac-info     real client: the crew's rows in the game's own info panel (the game window grabbed)
 python test/run_cards.py [--scale 2] real client (FSE launcher, single player): the crew cards (the web page): one each,
                                    in the bottom right, gear and health; talking, fighting, down; idle ones sunk, up on
-                                   hover; a card clicked: the pockets window; the setting off and on; one fired. Shots:
+                                   hover; a card clicked: the pockets window; the corner card's Follow me; the setting off and on; one fired. Shots:
                                    test/run/script-output/ac-cards-*.png (the game and the page, composited)
 python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)
 python test/run_gui.py ac-play     real client: hire (roam), your reach copied, help when you're bitten, a following build without bouncing, a tier upgrade

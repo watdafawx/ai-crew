@@ -4,7 +4,7 @@
 -- One of control.lua's files.
 
 -- (the other files' that this one uses: set by link, at the end)
-local COLORS, fstd, gun_range, members_of, player_setting, status_text, theme, trait
+local act, COLORS, fstd, gun_range, members_of, player_setting, status_text, theme, trait
 
 local cards = {}
 local PREFIX = "aic_hud_"
@@ -352,6 +352,9 @@ if script.active_mods["fse-std"] then
   if ok and type(s) == "table" and s.open then shell = s end
 end
 local SHELL, PAGE = "aic_cards", "__ai-crew__/web/cards.html"
+-- (the orders the corner card gives, as the window's dock: act's actions)
+local ORDERS = { build = true, deconstruct = true, upgrade = true, deliver = true, follow = true, roam = true, stop = true,
+  attack = true }
 local WEB_W, WEB_H, WEB_GAP = 124, 200, 6  -- (cards.css's card and gap, GUI units)
 local sent, sized = {}, {}  -- (this session, per player: the last snapshot sent, the shell's size)
 local icon_map
@@ -401,8 +404,8 @@ local function web_update(player, all)
     sent[i], sized[i] = nil, nil
     return
   end
-  -- (its size: side by side in a row; above the game's toolbar when they'd reach it)
-  local cols, rows = #all, 1
+  -- (its size: side by side in a row, the orders' card in the corner; above the game's toolbar when they'd reach it)
+  local cols, rows = #all + 1, 1
   local w, h = cols * WEB_W + (cols - 1) * WEB_GAP, rows * WEB_H + (rows - 1) * WEB_GAP
   local own = theme and theme.setting_scale and theme.setting_scale(player) or 1
   local res, ds = player.display_resolution, player.display_scale
@@ -429,9 +432,19 @@ if shell then
     if data.cmd == "ready" then  -- (loaded, or again: the cards now)
       sent[player.index] = nil
       cards.update(player)
+    elseif data.cmd == "order" and ORDERS[data.act] then  -- (the corner card: an order for everyone)
+      act(player, data.act)
     elseif data.cmd == "open" then
       cards.pockets(player, data.name)
     end
+  end)
+end
+
+-- the same orders as keys (data.lua's custom inputs, unbound until the player binds them)
+for k in pairs(ORDERS) do
+  script.on_event("ai-crew-order-" .. k, function(ev)
+    local player = game.get_player(ev.player_index)
+    if player then act(player, k) end
   end)
 end
 
@@ -504,7 +517,7 @@ end
 return {
   share = { cards = cards },
   link = function(A)
-    COLORS, gun_range, members_of, player_setting, status_text = A.COLORS, A.gun_range, A.members_of, A.player_setting, A.status_text
+    act, COLORS, gun_range, members_of, player_setting, status_text = A.act, A.COLORS, A.gun_range, A.members_of, A.player_setting, A.status_text
     fstd, theme, trait = A.fstd, A.theme, A.trait
   end,
 }

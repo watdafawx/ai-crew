@@ -3,7 +3,8 @@ test/ac-cards drives the game; with the loader's web plugin the cards are the we
 This runner answers the test's wants (ac-cards-want-<n>.txt): "shot <name>" -> run/script-output/ac-cards-<name>.png,
 the game window and the page over it as the screen shows them (PrintWindow of each, the page cut by its region: never
 a grab of the screen); "click <member>" -> that card clicked in the page (its DOM click: the page's own handler sends
-the message); "hover <member>" -> the mouse onto that card (its mouseenter). --scale N: the game's GUI at N x 100 % (a config of the run's own). Never while your Factorio is open."""
+the message); "hover <member>" -> the mouse onto that card (its mouseenter); "cmd <act>" -> the corner card's
+order button clicked. --scale N: the game's GUI at N x 100 % (a config of the run's own). Never while your Factorio is open."""
 import json, os, re, shutil, subprocess, sys, time, urllib.error, urllib.request
 from pathlib import Path
 
@@ -124,6 +125,10 @@ while time.time() - start < 300 and not (OUT / (TEST + "-done.txt")).exists() an
             r = api("/api/native/web/shell_eval", {"owner": "ai-crew", "name": "aic_cards", "js":
                     f"document.querySelector('.card[data-name=\"{arg}\"]').dispatchEvent(new MouseEvent('mouseenter'))"})
             print("  hovered", arg, "->", r.get("ok", r), flush=True)
+        elif what == "cmd":  # (an order for everyone: the corner card's button clicked)
+            r = api("/api/native/web/shell_eval", {"owner": "ai-crew", "name": "aic_cards",
+                                                   "js": f"document.querySelector('.cmd[data-act=\"{arg}\"]').click()"})
+            print("  order", arg, "->", r.get("ok", r), flush=True)
         elif what == "click":
             r = api("/api/native/web/shell_eval", {"owner": "ai-crew", "name": "aic_cards",
                                                    "js": f"document.querySelector('.card[data-name=\"{arg}\"]').click()"})

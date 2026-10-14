@@ -75,3 +75,20 @@ html, body { background: transparent; }
   margin-top: auto; }
 .rec span { display: inline-flex; align-items: center; gap: 4px; }
 .rec svg { width: 11px; height: 11px; opacity: 0.85; flex: none; }
+
+/* the orders for everyone: a short card in the corner, two rows of icon buttons */
+.card.cmds { height: auto; padding: 7px 6px 6px; gap: 5px; cursor: default; }
+.cmds-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fse-ink_dim);
+  text-align: center; }
+.cmd-grid { display: grid; grid-template-columns: repeat(4, 26px); gap: 3px; justify-content: center; }
+.cmd {
+  width: 26px; height: 26px; padding: 0; border: 0; border-radius: 4px; cursor: pointer; color: var(--fse-ink);
+  background: rgb(255 255 255 / 0.08); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+  display: grid; place-items: center; transition: background-color 0.15s ease, color 0.15s ease;
+}
+.cmd svg { width: 15px; height: 15px; }
+.cmd:hover { background: var(--fse-btn_on); color: var(--fse-btn_on_ink); }
+.cmd[data-act="deconstruct"], .cmd[data-act="attack"] { color: #ff8a80; }
+.cmd[data-act="deconstruct"]:hover, .cmd[data-act="attack"]:hover { background: #d8443a; color: #fff; }
+.cmd.sent { animation: sent 0.5s ease; }
+@keyframes sent { from { box-shadow: inset 0 0 0 2px var(--fse-ok), 0 0 0 0 var(--fse-ok); } }

@@ -2,7 +2,8 @@
 // per crew member name, color [r, g, b], trait, mode, doing, state ("idle" "work" "fight" "retreat" "down"), talk (the
 // line they're saying, or none), hp, max, slots [{item, n, icon ("<mod>/<path>|<size>"), tip}] (armor, gun, ammo,
 // fish), range, kills, built, trips, deaths, back (seconds until a fallen one is back). A click on a card sends
-// {cmd: "open", name}: the mod opens their inventory.
+// {cmd: "open", name}: the mod opens their pockets. The corner card's buttons send {cmd: "order", act}: an order for
+// everyone (build, deconstruct, upgrade, deliver, follow, roam, stop, attack: Clear nests).
 (() => {
   "use strict";
   const root = document.getElementById("cards");
@@ -87,13 +88,52 @@
       + `<span title="Times down">${icon("down")}${d.deaths}</span>`;
   }
 
+  // the orders for everyone (the window's dock): a card of its own in the corner; a click sends {cmd: "order", act}
+  const ORDERS = [
+    ["build", "Build", "Place the ghosts near you now (making what's missing)"],
+    ["deconstruct", "Deconstruct", "Remove what's marked for deconstruction near you"],
+    ["upgrade", "Upgrade", "Carry out the upgrade planner's marks near you"],
+    ["deliver", "Deliver", "Bring you everything they carry"],
+    ["follow", "Follow me", "All of them follow you"],
+    ["roam", "Roam", "Wander round you on their own, dealing with what they find"],
+    ["stop", "Stop all", "All of them drop all their jobs"],
+    ["attack", "Clear nests", "Destroy the enemy spawners and worms within 96 tiles of you"],
+  ];
+  let cmdCard = null;
+  function commands() {
+    if (cmdCard) return cmdCard;
+    cmdCard = el("div", "card cmds");
+    cmdCard.dataset.fseSolid = "";
+    cmdCard.append(el("div", "cmds-title", "Everyone"));
+    const grid = el("div", "cmd-grid");
+    for (const [act, name, tip] of ORDERS) {
+      const b = el("button", "cmd");
+      b.dataset.act = act;
+      b.title = `${name}: ${tip}`;
+      b.innerHTML = `<svg><use href="#o-${act}"/></svg>`;
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        fse.send({ cmd: "order", act });
+        b.classList.remove("sent");
+        void b.offsetWidth;  // (the flash again on a second click)
+        b.classList.add("sent");
+      });
+      grid.append(b);
+    }
+    cmdCard.append(grid);
+    return cmdCard;
+  }
+
   function render(list) {
     const seen = new Set();
+    const lead = list.length > 0 ? 1 : 0;  // (the orders' card first: the corner)
+    if (lead) { if (root.children[0] !== commands()) root.insertBefore(commands(), root.children[0] || null); }
+    else if (cmdCard) { cmdCard.remove(); }
     list.forEach((d, i) => {
       seen.add(d.name);
       const p = cards.get(d.name) || make(d.name);
       fill(p, d);
-      if (root.children[i] !== p.c) root.insertBefore(p.c, root.children[i] || null);
+      if (root.children[i + lead] !== p.c) root.insertBefore(p.c, root.children[i + lead] || null);
     });
     for (const [name, p] of cards) if (!seen.has(name)) { p.c.remove(); cards.delete(name); }
   }

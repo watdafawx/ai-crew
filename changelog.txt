@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.22.0
+Date: 2026-10-14
+  Features:
+    - The crew cards have an "Everyone" card in the corner: the orders for the whole crew as icon buttons (build,
+      deconstruct, upgrade, deliver, follow me, roam, stop all, clear nests).
+    - The same eight orders as keys in Settings > Controls ("AI Crew: ..."), unbound until you bind them.
+---------------------------------------------------------------------------------------------------
 Version: 0.21.0
 Date: 2026-10-14
   Features:

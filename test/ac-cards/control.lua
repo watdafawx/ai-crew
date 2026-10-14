@@ -4,6 +4,7 @@
 -- Four crew, Rook armed, hurt and carrying fish: a card each, in the bottom right, Rook's with his gear and health.
 -- Then Mara talks, Rook fights, Juno is down: the cards say so. Rook's card clicked: his pockets. The "Crew
 -- cards" setting (and its checkbox in the window's gear panel): off, no cards; on, back. Bolt fired: three.
+-- The corner card's Follow me: all of them follow.
 -- The runner answers ac-cards-want-<n>.txt ("shot <name>" / "click <member>") within a second.
 script.on_init(function()
   local fp = remote.interfaces["freeplay"]
@@ -72,7 +73,8 @@ local steps = {
     local res = p.display_resolution
     if st.web then
       local r = st.rect or { 0, 0, 0, 0 }
-      check(r[1] > res.width / 2 and r[2] > res.height / 2 and r[1] + r[3] <= res.width and r[2] + r[4] <= res.height,
+      check(r[1] + r[3] >= res.width - 40 * p.display_scale and r[2] > res.height / 2 and r[1] >= 0
+        and r[1] + r[3] <= res.width and r[2] + r[4] <= res.height,
         "the page in the bottom right, on the screen (" .. serpent.line(r) .. " of " .. res.width .. "x" .. res.height .. ")")
       local rook = by_name(st).Rook or { slots = {} }
       local gun, ammo = rook.slots[2] or {}, rook.slots[3] or {}
@@ -113,6 +115,8 @@ local steps = {
   -- the mouse over Juno's card (down: sunk to a strip): the whole card up
   [280] = function() if state().web then want("hover Juno") end end,
   [300] = function() shot("hover") end,
+  -- the corner card's "Follow me": all of them follow (Mara was told to stay)
+  [305] = function() if state().web then want("cmd follow") else remote.call("ai-crew", "press", 1, "follow") end end,
   -- a click on Rook's card: his pockets (a window: the game can't open his inventory for a script)
   [320] = function()
     if state().web then want("click Rook") else remote.call("ai-crew", "card_click", 1, "Rook") end
@@ -131,6 +135,8 @@ local steps = {
   [520] = function()
     local w = game.get_player(1).gui.screen.aic_pockets
     if w then w.destroy() end
+    local mara = remote.call("ai-crew", "status", "Mara")
+    check(mara and mara.mode == "follow", "the corner card's Follow me: Mara follows (" .. tostring(mara and mara.mode) .. ")")
     for _, e in pairs(game.surfaces[1].find_entities_filtered({ force = "enemy", type = "unit" })) do e.destroy() end
     remote.call("ai-crew", "panel", 1, 4)  -- (the window, its gear panel open)
   end,

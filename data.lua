@@ -11,3 +11,10 @@ for i, c in pairs(COLORS) do
     filename = "__ai-crew__/graphics/white.png", position = { 0, 0 }, size = 8, corner_size = 3,
     tint = { c[1], c[2], c[3], 1 } } } }
 end
+
+-- The orders for everyone as keys (cards.lua): the window's dock and the cards' corner card, from Settings > Controls.
+-- No keys by default (300 mods leave few free): the player binds the ones they want.
+for i, act in ipairs({ "build", "deconstruct", "upgrade", "deliver", "follow", "roam", "stop", "attack" }) do
+  data:extend({ { type = "custom-input", name = "ai-crew-order-" .. act, key_sequence = "", consuming = "none",
+    order = "a" .. i } })
+end
