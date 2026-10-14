@@ -1,5 +1,6 @@
--- AI Crew: the crew cards, one per crew member of yours in the bottom right of the screen: name and manner, how they
--- go about (roam, follow, stay), what they're doing, health, armor, gun, ammo and fish, and their record. Kept current
+-- AI Crew: the crew cards, party frames as in an RPG, one per crew member of yours in a column by the screen's left
+-- edge (or bottom right): name and manner, how they go about (roam, follow, stay), what they're doing, health, armor,
+-- gun, ammo and fish, and their record. Kept current
 -- twice a second (control.lua's on_tick). Hidden with the "Crew cards" setting (also in the window's gear panel).
 -- One of control.lua's files.
 
@@ -14,6 +15,11 @@ local W, H, GAP, EDGE = 196, 124, 4, 10  -- (a card's size, the room between the
 local BAR_HALF, BAR_H = 380, 108
 
 local function L(key, ...) return { "ai-crew-gui." .. key, ... } end
+
+-- where the cards go: "center-left" (the default) or "bottom-right" (the "Crew cards side" setting)
+local function side_of(player)
+  return player_setting(player, "ai-crew-cards-side") == "bottom-right" and "bottom-right" or "center-left"
+end
 
 local function first(e, inv_id)
   local inv = e.get_inventory(inv_id)
@@ -171,17 +177,21 @@ local function fill_down(f, d)
   rec.tooltip = L("card-record-tip", s.kills or 0, s.built or 0, (s.rides or 0) + (s.flights or 0), s.deaths or 0)
 end
 
--- where the cards go: two to a row from the bottom right, the first in the corner; above the game's toolbar when they'd
--- reach it
+-- where the cards go: a column, centre left or bottom right (above the game's toolbar when they'd reach it)
 local function place(player, list)
   local res, s = player.display_resolution, player.display_scale
-  local cols = math.min(#list, 2)
-  local left = res.width - (EDGE + cols * W + (cols - 1) * GAP) * s
-  local lift = left < res.width / 2 + BAR_HALF * s and BAR_H or 0
+  local tall = (#list * H + (#list - 1) * GAP) * s
+  if side_of(player) == "center-left" then  -- (a column by the left edge, centred top to bottom)
+    local top = (res.height - tall) / 2
+    for i, f in ipairs(list) do
+      f.location = { x = math.floor(EDGE * s), y = math.floor(top + (i - 1) * (H + GAP) * s) }
+    end
+    return
+  end
+  local lift = res.width - (EDGE + W) * s < res.width / 2 + BAR_HALF * s and BAR_H or 0
   for i, f in ipairs(list) do
-    local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
-    f.location = { x = math.floor(res.width - (EDGE + (col + 1) * W + col * GAP) * s),
-      y = math.floor(res.height - (EDGE + lift + (row + 1) * H + row * GAP) * s) }
+    f.location = { x = math.floor(res.width - (EDGE + W) * s),
+      y = math.floor(res.height - (EDGE + lift) * s - tall + (i - 1) * (H + GAP) * s) }
   end
 end
 
@@ -343,7 +353,7 @@ end
 
 -- ------------------------------------------------------------------------------------------------------------- web
 -- With the fse loader's web plugin (single player), the cards are a web page over the game (fse-std's shells,
--- web/cards.html): anchored in the bottom right, see-through between the cards, a ring in their colour while they
+-- web/cards.html): a column centre left or bottom right, see-through between the cards, a ring in their colour while they
 -- talk, red while they fight, grey while they're down. The game's GUI cards above are the fallback (no loader,
 -- multiplayer). The page gets a snapshot whenever one differs from the last it got.
 local shell
@@ -355,7 +365,7 @@ local SHELL, PAGE = "aic_cards", "__ai-crew__/web/cards.html"
 -- (the orders the corner card gives, as the window's dock: act's actions)
 local ORDERS = { build = true, deconstruct = true, upgrade = true, deliver = true, follow = true, roam = true, stop = true,
   attack = true }
-local WEB_W, WEB_H, WEB_GAP = 124, 200, 6  -- (cards.css's card and gap, GUI units)
+local WEB_W, WEB_H, WEB_GAP, WEB_CMDS = 240, 62, 5, 50  -- (cards.css's card, gap and orders' strip, GUI units)
 local sent, sized = {}, {}  -- (this session, per player: the last snapshot sent, the shell's size)
 local icon_map
 
@@ -404,25 +414,30 @@ local function web_update(player, all)
     sent[i], sized[i] = nil, nil
     return
   end
-  -- (its size: side by side in a row, the orders' card in the corner; above the game's toolbar when they'd reach it)
-  local cols, rows = #all + 1, 1
-  local w, h = cols * WEB_W + (cols - 1) * WEB_GAP, rows * WEB_H + (rows - 1) * WEB_GAP
+  -- (its size: a column, the orders' strip on top; centre left (the default), or bottom right, there above the game's
+  -- toolbar when it would reach it. Drawn smaller when the column wouldn't fit the screen's height)
+  local w, h = WEB_W, WEB_CMDS + #all * (WEB_H + WEB_GAP)
   local own = theme and theme.setting_scale and theme.setting_scale(player) or 1
   local res, ds = player.display_resolution, player.display_scale
-  local left = res.width - (EDGE + w) * ds * own
-  local lift = left < res.width / 2 + BAR_HALF * ds and math.floor(BAR_H / own) or 0
-  local key = w .. "x" .. h .. "+" .. lift .. "@" .. res.width .. "x" .. res.height .. "/" .. ds .. "/" .. own
+  local side = side_of(player)
+  local lift = 0
+  if side == "bottom-right" and res.width - (EDGE + w) * ds * own < res.width / 2 + BAR_HALF * ds then
+    lift = BAR_H
+  end
+  local room = res.height / ds - 2 * EDGE - lift  -- (GUI units at 100 %)
+  local scale = math.max(0.5, math.min(own, room / h))
+  local key = side .. h .. "+" .. lift .. "@" .. res.width .. "x" .. res.height .. "/" .. ds .. "/" .. scale
   if not shell.is_open(player, SHELL) or sized[i] ~= key then
-    shell.open(player, { name = SHELL, page = PAGE, size = { w, h }, anchor = "bottom-right", margin = EDGE,
-      offset = { 0, -lift }, esc = false, yield = true })
+    shell.open(player, { name = SHELL, page = PAGE, size = { w, h }, anchor = side == "bottom-right" and "bottom-right"
+      or "left", margin = EDGE, offset = { 0, -math.floor(lift / scale) }, scale = scale, esc = false, yield = true })
     sized[i] = key
   end
   local list = {}
   for k, it in ipairs(all) do list[k] = snapshot(it) end
-  local json = helpers.table_to_json(list)
+  local json = side .. helpers.table_to_json(list)
   if sent[i] ~= json then
     sent[i] = json
-    shell.send(player, SHELL, { cards = list })
+    shell.send(player, SHELL, { cards = list, side = side })
   end
 end
 
@@ -503,7 +518,8 @@ function cards.state(player)
   local lua = {}
   for name, f in pairs(shown(player)) do lua[name] = { style = f.style.name, down = f.tags.aic_down } end
   return { web = use_web(), open = shell ~= nil and shell.is_open(player, SHELL), rect = shell and shell.rect(player, SHELL),
-    sent = sent[player.index] and helpers.json_to_table(sent[player.index]), lua = lua }
+    sent = sent[player.index] and helpers.json_to_table((sent[player.index]:gsub("^[%a%-]+", ""))), lua = lua,
+    side = side_of(player) }
 end
 
 -- (tests) a click on a member's card, as the player's: the page's message, or the game's GUI card's click

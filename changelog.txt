@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.23.0
+Date: 2026-10-14
+  Changes:
+    - The crew cards are party frames now, as in an RPG: stacked in a column in the middle of the screen's left edge,
+      the "Everyone" orders on top; a health bar with its numbers, what they're doing, their gear as small icons
+      (their record in the tooltip). No more sinking and rising. Drawn smaller when the column wouldn't fit.
+  Features:
+    - New setting "Crew cards side": centre left (the default) or bottom right. Also in the window's gear panel.
+---------------------------------------------------------------------------------------------------
 Version: 0.22.0
 Date: 2026-10-14
   Features:

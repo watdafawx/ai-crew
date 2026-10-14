@@ -208,22 +208,23 @@ hand-crafting is the game's own, so it runs at your speed.
 
 ## The crew cards
 
-A card for each of your crew in the bottom right of the screen, kept current: name and manner, how they go about
-(roaming, following, staying), what they're doing (or saying), health, armor, gun, ammo and fish (range or unarmed),
-and their record (kills, built, trips, times down). A ring goes round a card in their colour while they talk, red
-while they fight; while they're down the card is grey and counts down to their return. Idle, a card sinks to a strip
-along the bottom (name and what they're at) and rises whole under the mouse. Click a card for their pockets: their
-gear and what they carry, a stack clicked comes to you, Take all takes what they carry (the game can't open another
-character's inventory for a mod). The "Crew cards" setting (also in the window's gear panel) hides them.
+A party frame for each of your crew, as in an RPG, stacked in a column in the middle of the screen's left edge
+(the "Crew cards side" setting: or the bottom right), kept current: name and manner, how they go about (roaming,
+following, staying), a health bar with its numbers, what they're doing (or saying), and armor, gun, ammo and fish as
+small icons. Their record (kills, built, trips, times down) is in the frame's tooltip. A ring goes round a frame in
+their colour while they talk, red while they fight; while they're down it's grey and counts down to their return.
+Click a frame for their pockets: their gear and what they carry, a stack clicked comes to you, Take all takes what
+they carry (the game can't open another character's inventory for a mod). The "Crew cards" setting (also in the
+window's gear panel, with the side) hides them. A column that wouldn't fit the screen's height is drawn smaller.
 
-In the corner, a short "Everyone" card holds the window's orders for the whole crew as icon buttons: build,
-deconstruct, upgrade, deliver, follow me, roam, stop all, clear nests. The same eight are keys in Settings >
-Controls ("AI Crew: build", ... "AI Crew: clear nests"), unbound until you bind them; they work without fse too.
+On top, an "Everyone" strip holds the window's orders for the whole crew as icon buttons: build, deconstruct,
+upgrade, deliver, follow me, roam, stop all, clear nests. The same eight are keys in Settings > Controls ("AI Crew:
+build", ... "AI Crew: clear nests"), unbound until you bind them; they work without fse too.
 
-With the fse loader (single player) the cards are a web page over the game (fse-std's shells, `web/cards.html`), in
+With the fse loader (single player) the frames are a web page over the game (fse-std's shells, `web/cards.html`), in
 the player's fse-std theme; it steps aside while another window (the inventory, a machine, the pockets) is open.
-Without it (or in multiplayer) they're the game's own GUI, side by side, the same rings from `data.lua`'s styles. They
-sit above the game's toolbar when they'd reach it (a large GUI scale).
+Without it (or in multiplayer) they're the game's own GUI, in the same column, the same rings from `data.lua`'s
+styles. In the bottom right they sit above the game's toolbar when they'd reach it.
 
 ## AI and voices (needs FSE)
 
@@ -321,8 +322,8 @@ python test/run_gui.py             real client (FSE launcher): every tab screens
                                    then at fse-std's window scale 150 % (--scale 2: the game's GUI at 200 %)
 python test/run_gui.py ac-info     real client: the crew's rows in the game's own info panel (the game window grabbed)
 python test/run_cards.py [--scale 2] real client (FSE launcher, single player): the crew cards (the web page): one each,
-                                   in the bottom right, gear and health; talking, fighting, down; idle ones sunk, up on
-                                   hover; a card clicked: the pockets window; the corner card's Follow me; the setting off and on; one fired. Shots:
+                                   in the middle of the left edge, gear and health; talking, fighting, down; a card
+                                   clicked: the pockets window; the corner card's Follow me; the setting off and on; "Bottom right"; one fired. Shots:
                                    test/run/script-output/ac-cards-*.png (the game and the page, composited)
 python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)
 python test/run_gui.py ac-play     real client: hire (roam), your reach copied, help when you're bitten, a following build without bouncing, a tier upgrade

@@ -1,10 +1,10 @@
 -- Real client: the crew cards in the bottom right. python test/run_cards.py [--scale 2] (single player through the fse
 -- launcher: the cards are the web page, screenshots composited by the runner); in a game without the web plugin
 -- (multiplayer, the factorio MCP's client) the game's GUI cards are checked the same way.
--- Four crew, Rook armed, hurt and carrying fish: a card each, in the bottom right, Rook's with his gear and health.
+-- Four crew, Rook armed, hurt and carrying fish: a card each, centre left, Rook's with his gear and health.
 -- Then Mara talks, Rook fights, Juno is down: the cards say so. Rook's card clicked: his pockets. The "Crew
 -- cards" setting (and its checkbox in the window's gear panel): off, no cards; on, back. Bolt fired: three.
--- The corner card's Follow me: all of them follow.
+-- The corner card's Follow me: all of them follow. Centre left by default; "Bottom right" moves them there.
 -- The runner answers ac-cards-want-<n>.txt ("shot <name>" / "click <member>") within a second.
 script.on_init(function()
   local fp = remote.interfaces["freeplay"]
@@ -73,9 +73,9 @@ local steps = {
     local res = p.display_resolution
     if st.web then
       local r = st.rect or { 0, 0, 0, 0 }
-      check(r[1] + r[3] >= res.width - 40 * p.display_scale and r[2] > res.height / 2 and r[1] >= 0
-        and r[1] + r[3] <= res.width and r[2] + r[4] <= res.height,
-        "the page in the bottom right, on the screen (" .. serpent.line(r) .. " of " .. res.width .. "x" .. res.height .. ")")
+      check(r[1] >= 0 and r[1] <= 40 * p.display_scale and math.abs(r[2] + r[4] / 2 - res.height / 2) <= 4
+        and r[1] + r[3] <= res.width, "the page in the middle of the left edge (" .. serpent.line(r) .. " of "
+        .. res.width .. "x" .. res.height .. ")")
       local rook = by_name(st).Rook or { slots = {} }
       local gun, ammo = rook.slots[2] or {}, rook.slots[3] or {}
       check(gun.item == "submachine-gun" and gun.icon and ammo.item == "firearm-magazine" and ammo.n == 40,
@@ -83,7 +83,7 @@ local steps = {
       check(rook.hp and rook.hp < rook.max, "Rook's card: hurt (" .. tostring(rook.hp) .. "/" .. tostring(rook.max) .. ")")
     else
       local f = p.gui.screen.aic_hud_Rook
-      check(f and f.location.x > res.width / 2 and f.location.y > res.height / 2, "in the bottom right")
+      check(f and f.location.x < res.width / 2 and f.location.y < res.height / 2 + 200, "on the left")
       local gun, ammo, bar = f and find(f, "aic_gun"), f and find(f, "aic_ammo"), f and find(f, "aic_hp")
       check(gun and gun.sprite == "item/submachine-gun" and ammo and ammo.number == 40, "Rook's card: his gun and 40 rounds")
       check(bar and bar.value < 1, "Rook's card: hurt (" .. tostring(bar and bar.value) .. ")")
@@ -112,9 +112,6 @@ local steps = {
     end
     shot("states")
   end,
-  -- the mouse over Juno's card (down: sunk to a strip): the whole card up
-  [280] = function() if state().web then want("hover Juno") end end,
-  [300] = function() shot("hover") end,
   -- the corner card's "Follow me": all of them follow (Mara was told to stay)
   [305] = function() if state().web then want("cmd follow") else remote.call("ai-crew", "press", 1, "follow") end end,
   -- a click on Rook's card: his pockets (a window: the game can't open his inventory for a script)
@@ -158,14 +155,28 @@ local steps = {
   end,
   [720] = function()
     check(count(state()) == 4, "on again: back (" .. count(state()) .. ")")
+    remote.call("ai-crew", "setting", 1, "cards-side", "bottom-right")  -- (the other side)
+  end,
+  [760] = function()
+    local p, st = game.get_player(1), state()
+    local res = p.display_resolution
+    if st.web then
+      local r = st.rect or { 0, 0, 0, 0 }
+      check(r[1] + r[3] >= res.width - 40 * p.display_scale and r[2] > res.height / 2 and r[1] >= 0
+        and r[2] + r[4] <= res.height, "\"Bottom right\": the page there (" .. serpent.line(r) .. ")")
+    else
+      local f = p.gui.screen.aic_hud_Rook
+      check(f and f.location.x > res.width / 2 and f.location.y > res.height / 2, "\"Bottom right\": the cards there")
+    end
+    shot("right")
     remote.call("ai-crew", "order", 1, "crew fire Bolt")
   end,
-  [780] = function()
+  [820] = function()
     local st = state()
     check(count(st) == 3 and not (st.web and by_name(st).Bolt or st.lua.Bolt), "Bolt fired: his card gone, three left")
     shot("three")
   end,
-  [840] = function()
+  [880] = function()
     log((storage.failed or 0) == 0 and "ALL PASS" or (storage.failed .. " FAILED"))
     helpers.write_file("ac-cards-done.txt", "done")
   end,

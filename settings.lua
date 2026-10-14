@@ -25,6 +25,8 @@ data:extend({
   { type = "bool-setting", name = "ai-crew-machine-checks", setting_type = "runtime-per-user", default_value = true, order = "h6" },
   { type = "bool-setting", name = "ai-crew-pings", setting_type = "runtime-per-user", default_value = true, order = "h7" },
   { type = "bool-setting", name = "ai-crew-cards", setting_type = "runtime-per-user", default_value = true, order = "h8" },
+  { type = "string-setting", name = "ai-crew-cards-side", setting_type = "runtime-per-user", default_value = "center-left",
+    allowed_values = { "center-left", "bottom-right" }, order = "h9" },
   { type = "string-setting", name = "ai-crew-new-mode", setting_type = "runtime-per-user", default_value = "roam",
     allowed_values = { "roam", "follow", "stay" }, order = "g2" },
   { type = "bool-setting", name = "ai-crew-ada-llm", setting_type = "runtime-per-user", default_value = false, order = "f" },

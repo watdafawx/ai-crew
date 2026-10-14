@@ -14,7 +14,6 @@
     if (text != null) e.textContent = text;
     return e;
   };
-  const icon = (id) => `<svg><use href="#i-${id}"/></svg>`;
   const hpColor = (f) => f > 0.6 ? "#5fd35f" : f > 0.3 ? "#f2c14b" : "#ff4a3d";
   const cards = new Map();  // name -> its card's parts
 
@@ -23,30 +22,22 @@
     c.dataset.fseSolid = "";
     c.dataset.name = name;
     const head = el("div", "head");
-    const mode = el("span", "mode");
-    head.append(el("span", "name", name), mode);
-    const trait = el("div", "trait");
-    const doing = el("div", "doing");
-    const text = el("span");
+    const trait = el("span", "trait"), mode = el("span", "mode");
+    head.append(el("span", "name", name), trait, mode);
+    const bar = el("div", "bar"), fill = el("i"), hpText = el("span");
+    bar.append(fill, hpText);
+    const line = el("div", "line"), doing = el("div", "doing"), text = el("span"), grid = el("div", "slots");
     doing.append(el("i", "dot"), text);
-    const hp = el("div", "hp"), bar = el("div", "bar"), fill = el("i"), hpText = el("span");
-    bar.append(fill);
-    hp.append(bar, hpText);
-    const gear = el("div", "gear"), grid = el("div", "slots");
     const slots = [0, 1, 2, 3].map(() => {
       const s = el("div", "slot");
       s.append(el("b"));
       grid.append(s);
       return s;
     });
-    const range = el("div", "range");
-    gear.append(grid, range);
-    const rec = el("div", "rec");
-    c.append(head, trait, doing, hp, gear, rec);
-    c.addEventListener("mouseenter", () => c.classList.add("up"));
-    c.addEventListener("mouseleave", () => c.classList.remove("up"));
+    line.append(doing, grid);
+    c.append(head, bar, line);
     c.addEventListener("click", () => { if (!c.classList.contains("down")) fse.send({ cmd: "open", name }); });
-    const parts = { c, trait, mode, text, fill, hpText, slots, range, rec };
+    const parts = { c, trait, mode, text, fill, hpText, slots };
     cards.set(name, parts);
     return parts;
   }
@@ -55,22 +46,20 @@
     const [r, g, b] = (d.color || [1, 0.55, 0.2]).map((x) => Math.round(x * 255));
     p.c.style.setProperty("--c", `rgb(${r} ${g} ${b})`);
     p.c.style.setProperty("--c-rgb", `${r} ${g} ${b}`);
-    const talk = d.talk && d.state !== "down";
-    // (rest: idle and quiet, or down: sunk to a strip, up when hovered)
-    const rest = !talk && (d.state === "idle" || d.state === "down" || !d.state);
-    let cls = "card " + (d.state || "idle") + (talk ? " talk" : "") + (rest ? " rest" : "");
-    if (p.c.classList.contains("up")) cls += " up";  // (kept up while the mouse is on it)
-    if (p.c.className !== cls) p.c.className = cls;
     const down = d.state === "down";
+    const talk = d.talk && !down;
+    const cls = "card " + (d.state || "idle") + (talk ? " talk" : "");
+    if (p.c.className !== cls) p.c.className = cls;
     p.trait.textContent = d.trait || "";
-    p.mode.textContent = down ? "" : MODE[d.mode] || "";
-    const line = down ? `Down, back in ${d.back} s` : d.talk ? `“${d.talk}”` : d.doing || "";
-    p.text.textContent = line;
-    p.c.title = down ? line : `${d.name}: ${d.doing}\nClick: their pockets`;
+    p.mode.textContent = down ? `back in ${d.back} s` : MODE[d.mode] || "";
+    p.text.textContent = down ? "Down" : talk ? `\u201c${d.talk}\u201d` : d.doing || "";
+    p.c.title = (down ? `${d.name}: down, back in ${d.back} s` : `${d.name}: ${d.doing}`)
+      + `\nKills ${d.kills} \u00b7 Built ${d.built} \u00b7 Trips ${d.trips} \u00b7 Down ${d.deaths}`
+      + (down ? "" : "\nClick: their pockets");
     const f = d.max > 0 ? Math.max(0, Math.min(1, d.hp / d.max)) : 0;
     p.fill.style.width = `${f * 100}%`;
     p.fill.style.backgroundColor = hpColor(f);
-    p.hpText.textContent = down ? "" : `${Math.round(d.hp)}/${Math.round(d.max)}`;
+    p.hpText.textContent = down ? "" : `${Math.round(d.hp)} / ${Math.round(d.max)}`;
     (d.slots || []).forEach((s, i) => {
       const e = p.slots[i];
       if (!e) return;
@@ -79,16 +68,11 @@
       if (e.dataset.icon !== want) { e.style.backgroundImage = want; e.dataset.icon = want; }
       e.classList.toggle("none", !s.item);
       e.firstChild.textContent = s.item && s.n > 1 ? String(s.n) : "";
-      e.title = s.tip || "";
+      e.title = (s.tip || "") + (i === 1 && s.item && d.range ? ` (range ${d.range})` : "");
     });
-    p.range.innerHTML = down ? "" : d.range ? `<b>${d.range}</b>range` : "unarmed";
-    p.rec.innerHTML = `<span title="Kills">${icon("kill")}${d.kills}</span>`
-      + `<span title="Built">${icon("built")}${d.built}</span>`
-      + `<span title="Trips (car, train, jetpack)">${icon("trip")}${d.trips}</span>`
-      + `<span title="Times down">${icon("down")}${d.deaths}</span>`;
   }
 
-  // the orders for everyone (the window's dock): a card of its own in the corner; a click sends {cmd: "order", act}
+  // the orders for everyone (the window's dock): a card of its own at the top; a click sends {cmd: "order", act}
   const ORDERS = [
     ["build", "Build", "Place the ghosts near you now (making what's missing)"],
     ["deconstruct", "Deconstruct", "Remove what's marked for deconstruction near you"],
@@ -126,7 +110,7 @@
 
   function render(list) {
     const seen = new Set();
-    const lead = list.length > 0 ? 1 : 0;  // (the orders' card first: the corner)
+    const lead = list.length > 0 ? 1 : 0;  // (the orders' card first: on top)
     if (lead) { if (root.children[0] !== commands()) root.insertBefore(commands(), root.children[0] || null); }
     else if (cmdCard) { cmdCard.remove(); }
     list.forEach((d, i) => {
@@ -138,7 +122,11 @@
     for (const [name, p] of cards) if (!seen.has(name)) { p.c.remove(); cards.delete(name); }
   }
 
-  fse.on((m) => { if (m && m.cards) render(m.cards); });
+  fse.on((m) => {
+    if (!m || !m.cards) return;
+    root.classList.toggle("left", m.side !== "bottom-right");  // (centre left, else bottom right)
+    render(m.cards);
+  });
   fse.send({ cmd: "ready" });
   // (opened in a plain browser: a sample, to look at the design)
   if (fse.standalone) {

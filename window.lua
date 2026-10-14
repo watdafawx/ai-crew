@@ -631,6 +631,12 @@ local function act(player, action, who, scripted)
       items[i] = L("mode-" .. v)
     end
     r.add({ type = "drop-down", name = "aic_set_new_mode", items = items, selected_index = mi, tooltip = L("new-crew-tip") })
+    r = row(own)  -- (where the crew cards go)
+    r.add({ type = "label", caption = { "mod-setting-name.ai-crew-cards-side" } })
+    r.add({ type = "drop-down", name = "aic_set_cards_side", items = { { "string-mod-setting.ai-crew-cards-side-center-left" },
+      { "string-mod-setting.ai-crew-cards-side-bottom-right" } },
+      selected_index = player_setting(player, "ai-crew-cards-side") == "bottom-right" and 2 or 1,
+      tooltip = { "mod-setting-description.ai-crew-cards-side" } })
     for _, c in ipairs(TOGGLES) do
       local parent = (c == "voices" or c == "lines-llm" or c == "ada" or c == "ada-llm") and voice or own
       parent.add({ type = "checkbox", name = "aic_set_" .. c, caption = { "mod-setting-name.ai-crew-" .. c },
@@ -905,6 +911,11 @@ end)
 script.on_event(defines.events.on_gui_selection_state_changed, function(ev)
   if ev.element.name == "aic_set_ada_voice" then
     game.get_player(ev.player_index).mod_settings["ai-crew-ada-voice"] = { value = ADA_VOICES[ev.element.selected_index] or "heart" }
+  end
+  if ev.element.name == "aic_set_cards_side" then
+    local player = game.get_player(ev.player_index)
+    player.mod_settings["ai-crew-cards-side"] = { value = ev.element.selected_index == 2 and "bottom-right" or "center-left" }
+    cards.update(player)
   end
   if ev.element.name == "aic_set_new_mode" then
     game.get_player(ev.player_index).mod_settings["ai-crew-new-mode"] = { value = NEW_MODES[ev.element.selected_index] or "roam" }
