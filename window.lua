@@ -102,7 +102,7 @@ local function check_ai(player)
 end
 
 -- (GUI Unifyer reskins the mod button bar but knows only its own list of buttons: ours take its button style, its
--- "_selected" one while on, so they match the others)
+-- "_selected" one while on, so they match the others, and toggled as well)
 local function gu_style(button, on)
   local base
   if script.active_mods["GUI_Unifyer"] or script.active_mods["GUI_Unifyer_Unified"] then
@@ -118,7 +118,7 @@ local function gu_style(button, on)
   local selected = base .. "_selected"
   if on and styles[selected] then
     button.style = selected
-    button.toggled = false
+    button.toggled = true  -- (also lit: some of its "_selected" styles draw the same art as the plain one)
   else
     button.style = base
     button.toggled = on == true
