@@ -530,8 +530,14 @@ JOBS.smelt = function(m, job)
     if not f.valid then job.i = job.i + 1 return false end
     if not go(m, f.position, math.max(e.reach_distance - 2, 2)) then return false end
     if f.type == "assembling-machine" then
-      local cur = f.get_recipe()
-      if not (cur and cur.name == r.name) then f.set_recipe(r.name) end
+      local cur, q = f.get_recipe()
+      if not (cur and cur.name == r.name) then
+        if cur and not crew_built(f) then -- (your idle machine on another recipe: borrowed, set back after)
+          job.borrowed = job.borrowed or {}
+          job.borrowed[#job.borrowed + 1] = { f = f, recipe = cur.name, quality = q and q.name }
+        end
+        f.set_recipe(r.name)
+      end
     end
     local runs = math.ceil(job.left / (#job.machines - job.i + 1))
     local src = f.get_inventory(IN[f.type])
@@ -566,6 +572,12 @@ JOBS.smelt = function(m, job)
     return false
   end
   if busy and job.n < job.count and game.tick - job.since < 3600 then return false end
+  for _, b in pairs(job.borrowed or {}) do -- (back on your recipe, once nothing of ours is left in it)
+    local f = b.f
+    if f.valid and f.get_inventory(IN[f.type]).is_empty() and f.get_inventory(OUT[f.type]).is_empty() then
+      f.set_recipe(b.recipe, b.quality)
+    end
+  end
   say(m, "Made " .. job.n .. " " .. pretty(job.item) .. ".", job.goal and "quiet")
   table.insert(m.jobs, 2, { kind = "deliver" })
   return true

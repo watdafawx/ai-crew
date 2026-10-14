@@ -77,6 +77,14 @@ local function any_player()
   for _, p in pairs(game.connected_players) do return p end
 end
 
+-- "Crew ping places" (the [gps] map tag at the end of their lines and ADA's): on unless the owner (or a test) turned
+-- it off
+local function pings(owner)
+  if storage.test_pings ~= nil then return storage.test_pings end
+  local pl = owner and game.get_player(owner) or any_player()
+  return not pl or player_setting(pl, "ai-crew-pings") ~= false
+end
+
 local function speak(text, voice, player)
   if game.is_multiplayer() then
     player = native and native.local_player and native.local_player() and game.get_player(native.local_player())
@@ -110,7 +118,7 @@ local function ada(text, vars)
     storage.ada_said[text] = used
     text = l:gsub("{(%w+)}", function(k) return vars and vars[k] ~= nil and tostring(vars[k]) or "" end)
   end
-  local gps = vars and vars.at and string.format(" [gps=%.1f,%.1f,%s]", vars.at.x, vars.at.y, vars.surface or "nauvis") or ""
+  local gps = vars and vars.at and pings() and string.format(" [gps=%.1f,%.1f,%s]", vars.at.x, vars.at.y, vars.surface or "nauvis") or ""
   local p = any_player()
   if p and not player_setting(p, "ai-crew-ada") then return end
   if p and py() and player_setting(p, "ai-crew-ada-llm") then
@@ -273,7 +281,7 @@ local function say(m, text, how, at)
     storage.voice_at, m.voice_at = t, t -- (its turn to speak, kept for when the words come back)
     return
   end
-  local tag = at and string.format(" [gps=%.1f,%.1f,%s]", at.x, at.y, e.surface.name) or ""
+  local tag = at and pings(m.owner) and string.format(" [gps=%.1f,%.1f,%s]", at.x, at.y, e.surface.name) or ""
   game.print(string.format("[color=%g,%g,%g]%s:[/color] %s", c[1], c[2], c[3], m.name, text) .. tag)
   m.lines = (m.lines or 0) + 1 -- (what reached the chat, the last few: for tests)
   m.last_lines = m.last_lines or {}

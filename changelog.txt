@@ -1,4 +1,16 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.20.0
+Date: 2026-10-14
+  Changes:
+    - The crew stop shooting once their target has gone out of range (or they've stopped fighting): they used to keep
+      firing at the last spot it stood, and not get back to their work.
+    - New settings "Crew check machines" (roaming, they look over the machines they pass: poles to a dark one, a word
+      on one starved or backed up) and "Crew ping places" (the map pin on their and ADA's chat lines). Both on by
+      default, in the mod settings and the window's gear panel.
+    - Made in a machine, the crew use yours before building their own: besides an empty one or one on that recipe, an
+      idle assembler of yours on another recipe (empty, fed by nothing) is switched for the job and set back after.
+      Yours come before the crew's own, those on that recipe first.
+---------------------------------------------------------------------------------------------------
 Version: 0.19.2
 Date: 2026-10-14
   Changes:

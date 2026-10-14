@@ -256,11 +256,13 @@ end
 local IN = { furnace = defines.inventory.furnace_source, ["assembling-machine"] = defines.inventory.assembling_machine_input }
 local OUT = { furnace = defines.inventory.furnace_result, ["assembling-machine"] = defines.inventory.assembling_machine_output }
 
--- machines near the owner free for this recipe, nearest first, up to 4: a furnace that's empty or on the same input;
--- an assembler-type machine (overhaul mods' furnaces too) with no recipe and nothing in it, or already on this recipe
+-- machines near the owner free for this recipe, up to 4: a furnace that's empty or on the same input; an
+-- assembler-type machine (overhaul mods' furnaces too) already on this recipe, or standing idle with nothing in it (no
+-- recipe, or another one: switched for the job and back after, see JOBS.smelt). Yours first (those on this recipe
+-- before idle ones), then the crew's own, nearest first: what's there is used before anything is built (need_machine)
 local function machines_for(m, r, item)
   local e = m.entity
-  local out = {}
+  local out, rank = {}, {}
   for _, f in pairs(e.surface.find_entities_filtered({ type = { "furnace", "assembling-machine" }, force = e.force,
     position = anchor(m), radius = RADIUS })) do
     local p = f.prototype
@@ -287,12 +289,19 @@ local function machines_for(m, r, item)
         free = src.is_empty() or src.get_item_count(r.ingredients[1].name) > 0
       else
         local cur = f.get_recipe()
-        free = (not cur and src.is_empty()) or (cur and cur.name == r.name)
+        free = (cur and cur.name == r.name) or src.is_empty() and res.is_empty() and not f.is_crafting()
       end
-      if free and (res.is_empty() or res.get_item_count(item) > 0) then out[#out + 1] = f end
+      if free and (res.is_empty() or res.get_item_count(item) > 0) then
+        local cur = f.type == "assembling-machine" and f.get_recipe()
+        rank[f] = (crew_built(f) and 2 or 0) + ((f.type == "furnace" or cur and cur.name == r.name) and 0 or 1)
+        out[#out + 1] = f
+      end
     end
   end
-  table.sort(out, function(a, b) return dist2(e.position, a.position) < dist2(e.position, b.position) end)
+  table.sort(out, function(a, b)
+    if rank[a] ~= rank[b] then return rank[a] < rank[b] end
+    return dist2(e.position, a.position) < dist2(e.position, b.position)
+  end)
   for i = #out, 5, -1 do out[i] = nil end
   return out
 end

@@ -224,6 +224,13 @@ local function notice(m)
       return true
     end
   end
+  -- (machines: not with "Crew check machines" off)
+  local checks = storage.test_checks
+  if checks == nil then
+    local pl = m.owner and game.get_player(m.owner) or not m.owner and any_player()
+    checks = not pl or player_setting(pl, "ai-crew-machine-checks") ~= false
+  end
+  if not checks then return false end
   local remark = game.tick >= (m.remark_at or 0)
   for _, f in pairs(s.find_entities_filtered({ type = { "assembling-machine", "furnace", "lab", "mining-drill" }, force = e.force,
     position = e.position, radius = 20 })) do

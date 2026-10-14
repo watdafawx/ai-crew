@@ -182,6 +182,13 @@ local function arm(m)
   end
 end
 
+-- stops shooting: a character keeps firing at the last spot it was given until it's told to stop
+local function hold_fire(m)
+  if m.entity.shooting_state.state ~= defines.shooting.not_shooting then
+    m.entity.shooting_state = { state = defines.shooting.not_shooting, position = m.entity.position }
+  end
+end
+
 -- every half second: shoot what's in range, fall back to the owner when hurt, come back when healed
 local function fight(m)
   local e = m.entity
@@ -210,7 +217,7 @@ local function fight(m)
     say(m, line(m, "hurt", { at = e.position }))
     return
   end
-  if m.defend == false and not (m.jobs[1] and m.jobs[1].kind == "attack") then m.target = nil return end
+  if m.defend == false and not (m.jobs[1] and m.jobs[1].kind == "attack") then m.target = nil hold_fire(m) return end
   local range = gun_range(m)
   if range == 0 and game.tick >= (m.arm_at or 0) then -- (no gun: looked for every 5 s, not each half second)
     m.arm_at = game.tick + 300
@@ -245,6 +252,7 @@ local function fight(m)
     end
   end
   m.target = enemy
+  if not enemy then hold_fire(m) end -- (dead, or gone out of range: control.lua only stops for a dead one)
   if enemy and enemy.valid then
     local ammo = e.get_inventory(defines.inventory.character_ammo)
     if ammo and ammo.get_item_count() < 5 then arm(m) end

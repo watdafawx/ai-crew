@@ -79,8 +79,9 @@ machine makes (plates), first go and get what's already made, in a chest up to 1
 and bring it home; otherwise run its recipe in a free machine near you: load the ingredients, fuel burners (coal, else wood, mined if need be), collect the
 output. They borrow only machines of yours that no inserter feeds or empties (anything in a production line is left
 alone), and put their own on their grid, 3 tiles clear of your buildings, ghosts and floors (concrete, paths),
-beside the ones they built before; never more than three of a kind. Vanilla furnaces pick their own recipe; assembler-type machines (assemblers, and overhaul mods' furnaces that
-need a recipe chosen) get it set when they're empty and idle.
+beside the ones they built before; never more than three of a kind. Yours come first (those already on the recipe,
+then idle ones), then their own: what's there is used before anything is built. Vanilla furnaces pick their own recipe; assembler-type machines (assemblers, and overhaul mods' furnaces that
+need a recipe chosen) get it set when they're empty and idle; one of yours on another recipe is set back after.
 
 **They build what the plan needs.** No free machine for a recipe? They make one (burner-powered kinds first, so a
 stone furnace for smelting) and set it up near you; with "Crew build machines" off (the window's gear, or Mod
@@ -135,7 +136,7 @@ as much as you: their body is thinner than yours to begin with.
 40 tiles of you (of home when you're not there), stops a while, looks around and deals with what it finds as a player
 would: goes after a nest or worm when it's armed and **Fight** is ticked, runs poles to a machine standing dark (while
 poles are all it takes; with **Auto** on), and mentions machines starved of inputs or backed up (nothing taking their output at all; a full belt is no news) (at most every 3
-minutes). It still builds, clears and works on the goal like everyone else, and catches up when you walk off. Round
+minutes; setting "Crew check machines", on by default: off, they walk past machines). It still builds, clears and works on the goal like everyone else, and catches up when you walk off. Round
 where it walks it also carries out the upgrade planner's marks (out past the 48 tiles round you), swaps your
 machines, inserters and furnaces for the next tier when that item is already in your pockets, chests, belts or network
 (a few a look, never crafted or mined for it; belts only a whole connected run at once, belts, undergrounds and
@@ -172,7 +173,8 @@ the job you gave them done) goes to chat and is spoken, but only one voice every
 aloud at most every 20 seconds; any line a member said in the last 5 minutes, or a teammate said in the last minute,
 is only a bubble. A bubble is cut short with "…" (the whole line is in chat) and sits above a nearby teammate's
 instead of over it. Answers to you are always spoken. A line about a place (a nest, a dark or starved machine, an
-attack, where they got hurt, a hint, a crew member down) ends in a map pin in chat: click it to see where "over here" is. The stock lines are in `lines.lua` (several per manner for each
+attack, where they got hurt, a hint, a crew member down) ends in a map pin in chat: click it to see where "over here" is
+(setting "Crew ping places", on by default: off, the words only). The stock lines are in `lines.lua` (several per manner for each
 kind of news). With "Crew word their lines with the AI" on (the default; the window's gear, voices) and an AI that
 answers, a line about to be spoken goes to the AI first and is said in that member's own words, the same facts; one
 request per spoken line, and the stock line when the AI can't.
@@ -284,6 +286,11 @@ python test/run.py ac-roam2 36010  headless game: roaming: a far upgrade mark do
                                    none; a belt loop one short stays, then goes up whole); gears hand-crafted from belt
                                    plates; comes to a bitten character
 python test/run.py ac-fight        headless game: arms up, kills biters, clears a spawner and a worm, comes back, respawns
+python test/run.py ac-shoot        headless game: stops shooting once the biters are dead, and once its target leaves range
+python test/run.py ac-checks       headless game: "Crew check machines" / "Crew ping places" off then on: a dark
+                                   assembler left alone then powered; a nest line without, then with, a map pin
+python test/run.py ac-reuse        headless game: engine units made in your idle assembler (on copper cable), none of
+                                   their own built; yours set back to copper cable after
 python test/run.py ac-line 72010   headless game: a goal with a line (a stand-in bpgen places it): built, fed, emptied
 python test/run.py ac-power 144010 headless game: an engine goal with no assembler and no power: they build both
 python test/run.py ac-boot         headless game: from nothing, a furnace, plates, a ghost, gears, an engine

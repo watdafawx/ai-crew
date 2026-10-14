@@ -588,6 +588,8 @@ remote.add_interface("ai-crew", {
   test_machines = function(on) storage.test_machines = on end, -- (tests: "Crew build machines", for want of a player)
   test_back_after_orders = function(on) storage.test_back_after_orders = on end, -- (tests: "Back where they stood...")
   test_tiers = function(on) storage.test_tiers = on end, -- (tests: "Crew upgrade to better tiers")
+  test_checks = function(on) storage.test_checks = on end, -- (tests: "Crew check machines")
+  test_pings = function(on) storage.test_pings = on end, -- (tests: "Crew ping places")
   test_char = function(c) storage.test_char = c end, -- (tests: a character standing in for the player's, when hit)
   test_owner = function(c) storage.test_owner = c end, -- (tests: a character standing in for an owner's, no player)
   -- (tests) plan()'s next job for n of item, no far search skipped; its kind, or why none

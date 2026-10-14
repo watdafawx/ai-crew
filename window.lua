@@ -82,7 +82,7 @@ end
 PROVIDER_CHOICES = { "auto", "openrouter", "groq", "gemini", "cerebras", "mistral", "pollinations", "ollama", "off" }
 -- (the settings' checkboxes: worded as the mod settings they set, locale [mod-setting-name] / -description)
 TOGGLES = { "voices", "ada", "ada-llm", "lines-llm", "chatter", "hints", "machines", "back-after-orders", "jetpack",
-  "tier-upgrades" }
+  "tier-upgrades", "machine-checks", "pings" }
 
 local function ai_short(player)
   local a = ai_state()[player.index]
