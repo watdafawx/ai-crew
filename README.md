@@ -77,8 +77,8 @@ something only a machine makes becomes a *need*, worked on before the goal. The 
 take it if it's around; mine it if there's a source nearby (ore, stone, coal, trees); hand-craft it; for what only a
 machine makes (plates), first go and get what's already made, in a chest up to 160 tiles away or on a belt up to 80,
 and bring it home; otherwise run its recipe in a free machine near you: load the ingredients, fuel burners (coal, else wood, mined if need be), collect the
-output. They borrow only machines of yours that no inserter feeds or empties (anything in a production line is left
-alone), and put their own on their grid, 3 tiles clear of your buildings, ghosts and floors (concrete, paths),
+output. They borrow only machines of yours that no inserter or loader feeds or empties and with no pipes on them (anything
+in a production line is left alone), and put their own on their grid, 3 tiles clear of your buildings, ghosts and floors (concrete, paths),
 beside the ones they built before; never more than three of a kind. Yours come first (those already on the recipe,
 then idle ones), then their own: what's there is used before anything is built. Vanilla furnaces pick their own recipe; assembler-type machines (assemblers, and overhaul mods' furnaces that
 need a recipe chosen) get it set when they're empty and idle; one of yours on another recipe is set back after.
@@ -290,7 +290,8 @@ python test/run.py ac-shoot        headless game: stops shooting once the biters
 python test/run.py ac-checks       headless game: "Crew check machines" / "Crew ping places" off then on: a dark
                                    assembler left alone then powered; a nest line without, then with, a map pin
 python test/run.py ac-reuse        headless game: engine units made in your idle assembler (on copper cable), none of
-                                   their own built; yours set back to copper cable after
+                                   their own built; yours set back to copper cable after; nearer line machines (inserter,
+                                   loader, pipe) left on their recipes
 python test/run.py ac-line 72010   headless game: a goal with a line (a stand-in bpgen places it): built, fed, emptied
 python test/run.py ac-power 144010 headless game: an engine goal with no assembler and no power: they build both
 python test/run.py ac-boot         headless game: from nothing, a furnace, plates, a ghost, gears, an engine

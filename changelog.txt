@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.20.1
+Date: 2026-10-14
+  Changes:
+    - A machine of yours that a loader feeds or empties, or with pipes on it, counts as part of a line (as one an
+      inserter works already did): never borrowed, its recipe never switched. 0.20.0 could switch them.
+---------------------------------------------------------------------------------------------------
 Version: 0.20.0
 Date: 2026-10-14
   Changes:

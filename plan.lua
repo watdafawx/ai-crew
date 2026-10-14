@@ -273,11 +273,15 @@ local function machines_for(m, r, item)
         in_line = true
       end
     end
-    if not in_line and not crew_built(f) then -- (a machine of yours that inserters feed or empty is part of a line: not theirs)
-      local b = f.bounding_box
-      for _, i in pairs(e.surface.find_entities_filtered({ type = "inserter", force = e.force,
+    if not in_line and not crew_built(f) then -- (a machine of yours that inserters or loaders feed or empty, or with
+      local b = f.bounding_box                 -- pipes on it, is part of a line: not theirs, its recipe never switched)
+      for _, i in pairs(e.surface.find_entities_filtered({ type = { "inserter", "loader", "loader-1x1" }, force = e.force,
         area = { { b.left_top.x - 3, b.left_top.y - 3 }, { b.right_bottom.x + 3, b.right_bottom.y + 3 } } })) do
-        if i.drop_target == f or i.pickup_target == f then in_line = true break end
+        if i.type == "inserter" and (i.drop_target == f or i.pickup_target == f)
+          or i.type ~= "inserter" and i.loader_container == f then in_line = true break end
+      end
+      for k = 1, in_line and 0 or #f.fluidbox do
+        if #f.fluidbox.get_connections(k) > 0 then in_line = true break end
       end
     end
     if not in_line and p.crafting_categories[r.category] and f.status ~= defines.entity_status.no_power
