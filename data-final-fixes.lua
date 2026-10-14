@@ -24,3 +24,19 @@ if base then
 else
   log("ai-crew: no base character prototype to copy: the crew stay full width")
 end
+
+-- The icons of what the crew cards show (cards.lua, the web page's slots: armor, guns, ammo, fish): item name ->
+-- "<mod>/<path>|<icon size>" of its first layer, a file the page's /mod/<mod>/<path> serves. Read at runtime from
+-- prototypes.mod_data["ai-crew-icons"].
+pcall(function()
+  local out = {}
+  for _, t in ipairs({ "armor", "gun", "ammo", "capsule" }) do
+    for name, p in pairs(data.raw[t] or {}) do
+      local l = p.icons and p.icons[1] or { icon = p.icon, icon_size = p.icon_size }
+      local mod, rest
+      if type(l.icon) == "string" then mod, rest = l.icon:match("^__([^/]+)__/(.+)$") end
+      if mod then out[name] = mod .. "/" .. rest .. "|" .. tostring(l.icon_size or p.icon_size or 64) end
+    end
+  end
+  data:extend({ { type = "mod-data", name = "ai-crew-icons", data = out } })
+end)

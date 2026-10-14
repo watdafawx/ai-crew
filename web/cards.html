@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Crew cards</title>
+<!-- AI Crew's crew cards as a web page over the game (fse's shells, cards.lua): one card per crew member in the bottom
+     right, see-through between them. State comes from the mod ({cards}), a click goes back ({cmd = "open"}). -->
+<link rel="stylesheet" href="/shell/shell.css">
+<script src="/shell/shell.js"></script>
+<link rel="stylesheet" href="cards.css">
+</head>
+<body>
+<div id="cards" class="cards"></div>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-kill" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1v4M8 11v4M1 8h4M11 8h4" stroke="currentColor" stroke-width="1.6"/></symbol>
+  <symbol id="i-built" viewBox="0 0 16 16"><path d="M2 14l7-7M7 3l3-1 4 4-1 3-2-2-2 2-2-2 2-2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-trip" viewBox="0 0 16 16"><path d="M2 12c3 0 3-8 6-8s3 8 6 8" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 2a5 5 0 0 0-5 5c0 2 1 3 2 3.5V13h6v-2.5c1-.5 2-1.5 2-3.5a5 5 0 0 0-5-5z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="7" r="1" fill="currentColor"/><circle cx="10" cy="7" r="1" fill="currentColor"/></symbol>
+</svg>
+<script src="cards.js"></script>
+</body>
+</html>

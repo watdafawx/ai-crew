@@ -1,4 +1,15 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.21.0
+Date: 2026-10-14
+  Features:
+    - Crew cards: a card for each of your crew in the bottom right of the screen, kept current: what they're doing
+      (or saying), health, armor, gun, ammo and fish, how they go about, and their record (kills, built, trips,
+      times down). A ring in their colour while they talk, red while they fight; grey with a countdown while
+      they're down. Idle, a card sinks to a strip and rises under the mouse. Click one for their pockets: take a
+      stack, or all they carry. With the fse loader they're a web page in your fse-std theme; without it (or in
+      multiplayer) the game's own GUI.
+    - New setting "Crew cards" (on by default; also in the window's gear panel) to hide them.
+---------------------------------------------------------------------------------------------------
 Version: 0.20.1
 Date: 2026-10-14
   Changes:

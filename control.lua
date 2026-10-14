@@ -74,7 +74,7 @@ local A = { a_an = a_an, ACKS = ACKS, ADA_COLOR = ADA_COLOR, ALIASES = ALIASES, 
   NAMES = NAMES, pick = pick, pretty = pretty, RADIUS = RADIUS, ROAM = ROAM, TRAIT_ORDER = TRAIT_ORDER,
   TRAITS = TRAITS }
 local JOBS = {} -- kind -> function(m, job): true when done (work.lua's, plan.lua's, fight.lua's)
-local FILE_NAMES = { "voice", "plan", "move", "work", "fight", "roam", "orders", "window" }
+local FILE_NAMES = { "voice", "plan", "move", "work", "fight", "roam", "orders", "window", "cards" }
 local FILES = {}
 for i, name in ipairs(FILE_NAMES) do FILES[i] = require(name) end
 for _, f in ipairs(FILES) do
@@ -94,7 +94,7 @@ for i, f in ipairs(FILES) do
 end
 linking = "control.lua"
 local act, ada, add_button, add_need, ai_state, alarm = A.act, A.ada, A.add_button, A.add_need, A.ai_state, A.alarm
-local anchor, any_player, available, build_panel = A.anchor, A.any_player, A.available, A.build_panel
+local anchor, any_player, available, build_panel, cards = A.anchor, A.any_player, A.available, A.build_panel, A.cards
 local chatter, check_ai, face, fight, find_member = A.chatter, A.check_ai, A.face, A.fight, A.find_member
 local flight, fly, forget_caches, fstd, fuel_available = A.flight, A.fly, A.forget_caches, A.fstd, A.fuel_available
 local go, goal_step, goals, gun_range, hear, hint = A.go, A.goal_step, A.goals, A.gun_range, A.hear, A.hint
@@ -400,6 +400,7 @@ script.on_event(defines.events.on_tick, function(ev)
   if t % 30 == 0 then
     for _, p in pairs(game.connected_players) do
       refresh(p)
+      cards.update(p)
       if p.gui.screen.aic_card or hover.shown[p.index] then hover.show(p, hover.member_of(p.selected)) end -- (kept current)
     end
     local lines = queued()
@@ -590,6 +591,11 @@ remote.add_interface("ai-crew", {
   test_tiers = function(on) storage.test_tiers = on end, -- (tests: "Crew upgrade to better tiers")
   test_checks = function(on) storage.test_checks = on end, -- (tests: "Crew check machines")
   test_pings = function(on) storage.test_pings = on end, -- (tests: "Crew ping places")
+  -- (tests) a per-player setting of ours set, as the window's gear panel sets it (only this mod may)
+  setting = function(player_index, key, value) game.get_player(player_index).mod_settings["ai-crew-" .. key] = { value = value } end,
+  -- (tests) the crew cards: how they're shown (cards.lua's state); a card clicked
+  cards = function(player_index) return cards.state(game.get_player(player_index)) end,
+  card_click = function(player_index, name) cards.test_click(game.get_player(player_index), name) end,
   test_char = function(c) storage.test_char = c end, -- (tests: a character standing in for the player's, when hit)
   test_owner = function(c) storage.test_owner = c end, -- (tests: a character standing in for an owner's, no player)
   -- (tests) plan()'s next job for n of item, no far search skipped; its kind, or why none
@@ -656,8 +662,10 @@ remote.add_interface("ai-crew", {
 
 -- the fse-std window's own handlers (title bar close, remembered place, resize grip), after ours
 if fstd then
+  local ok, cards_shell = pcall(require, "__fse-std__/shell")
+  cards_shell = ok and type(cards_shell) == "table" and cards_shell.handlers and cards_shell or nil
   require("__fse-std__/safe").chain("ai-crew", { require("__fse-std__/input").handlers, fstd.handlers,
-    theme and theme.handlers or {} })
+    theme and theme.handlers or {}, cards_shell and cards_shell.handlers or {} })  -- (cards_shell: cards.lua's web page)
   if theme and theme.on_confirm then  -- (Fire, after its question)
     theme.on_confirm(function(player, name, yes, data)
       if name ~= "aic_fire" or not (yes and data and data.who) then return end

@@ -206,6 +206,21 @@ when hired and every 5 seconds (with you dead, any player's on line). Your force
 mining speed, reach, pocket slots, health, weapon damage and shooting speed) applies to them by itself, and their
 hand-crafting is the game's own, so it runs at your speed.
 
+## The crew cards
+
+A card for each of your crew in the bottom right of the screen, kept current: name and manner, how they go about
+(roaming, following, staying), what they're doing (or saying), health, armor, gun, ammo and fish (range or unarmed),
+and their record (kills, built, trips, times down). A ring goes round a card in their colour while they talk, red
+while they fight; while they're down the card is grey and counts down to their return. Idle, a card sinks to a strip
+along the bottom (name and what they're at) and rises whole under the mouse. Click a card for their pockets: their
+gear and what they carry, a stack clicked comes to you, Take all takes what they carry (the game can't open another
+character's inventory for a mod). The "Crew cards" setting (also in the window's gear panel) hides them.
+
+With the fse loader (single player) the cards are a web page over the game (fse-std's shells, `web/cards.html`), in
+the player's fse-std theme; it steps aside while another window (the inventory, a machine, the pockets) is open.
+Without it (or in multiplayer) they're the game's own GUI, side by side, the same rings from `data.lua`'s styles. They
+sit above the game's toolbar when they'd reach it (a large GUI scale).
+
 ## AI and voices (needs FSE)
 
 **Multiplayer.** Each player's AI calls run on their own computer, with their own key and Python, and the answer
@@ -252,7 +267,7 @@ death, crew hired or lost.
 `voice.lua` (what they say, ADA, chatter, the AI jobs), `plan.lua` (items and where to get them, machines, power,
 plans, goals), `move.lua` (walking, jetpacks, vehicles), `work.lua` (the jobs), `fight.lua` (guns, fights, defending,
 fishing), `roam.lua` (roaming, offers, hints), `orders.lua` (hiring, orders, chat), `window.lua` (the window, its
-settings, the hover card). `lines.lua`: the stock lines. Each file ends with what it shares and a `link` that gets
+settings, the hover card), `cards.lua` (the crew cards and the pockets window; its page in `web/`). `lines.lua`: the stock lines. Each file ends with what it shares and a `link` that gets
 what it uses of the others' (see the top of `control.lua`).
 
 ## Tests
@@ -301,6 +316,10 @@ python test/run.py --all [-j N]    every headless case above, N games at once (d
 python test/run_gui.py             real client (FSE launcher): every tab screenshotted, Settings saved and tested, the hover card,
                                    then at fse-std's window scale 150 % (--scale 2: the game's GUI at 200 %)
 python test/run_gui.py ac-info     real client: the crew's rows in the game's own info panel (the game window grabbed)
+python test/run_cards.py [--scale 2] real client (FSE launcher, single player): the crew cards (the web page): one each,
+                                   in the bottom right, gear and health; talking, fighting, down; idle ones sunk, up on
+                                   hover; a card clicked: the pockets window; the setting off and on; one fired. Shots:
+                                   test/run/script-output/ac-cards-*.png (the game and the page, composited)
 python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)
 python test/run_gui.py ac-play     real client: hire (roam), your reach copied, help when you're bitten, a following build without bouncing, a tier upgrade
 python test/test_py.py [--live KEY] aicrew.py offline; --live asks a real provider once

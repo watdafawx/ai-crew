@@ -2,7 +2,7 @@
 -- control.lua's files.
 
 -- (the other files' that this one uses: set by link, at the end)
-local ai_state, CREW, crew, DOING_WORD, find_member, goal_have, gun_range, jobs, llm_settings, MAX_CREW, members_of,
+local ai_state, cards, CREW, crew, DOING_WORD, find_member, goal_have, gun_range, jobs, llm_settings, MAX_CREW, members_of,
   needs, order, player_setting, pretty, py, speak, trait
 
 -- ------------------------------------------------------------------------------------------------------------ panel
@@ -82,7 +82,7 @@ end
 PROVIDER_CHOICES = { "auto", "openrouter", "groq", "gemini", "cerebras", "mistral", "pollinations", "ollama", "off" }
 -- (the settings' checkboxes: worded as the mod settings they set, locale [mod-setting-name] / -description)
 TOGGLES = { "voices", "ada", "ada-llm", "lines-llm", "chatter", "hints", "machines", "back-after-orders", "jetpack",
-  "tier-upgrades", "machine-checks", "pings" }
+  "tier-upgrades", "machine-checks", "pings", "cards" }
 
 local function ai_short(player)
   local a = ai_state()[player.index]
@@ -848,6 +848,7 @@ end)
 script.on_event(defines.events.on_gui_click, function(ev)
   local el, player = ev.element, game.get_player(ev.player_index)
   if not (el.valid and player) then return end
+  if cards.click(player, el) then return end  -- (a crew card: their inventory)
   if el.name == "aic_toggle" then
     if open_frame(player) then act(player, "close") else build_panel(player) end
     add_button(player)
@@ -872,7 +873,9 @@ script.on_event(defines.events.on_gui_checked_state_changed, function(ev)
   end
   local setting = el.name:match("^aic_set_(.+)$")
   if setting then
-    game.get_player(ev.player_index).mod_settings["ai-crew-" .. setting] = { value = el.state }
+    local player = game.get_player(ev.player_index)
+    player.mod_settings["ai-crew-" .. setting] = { value = el.state }
+    if setting == "cards" then cards.update(player) end
     return
   end
   local m = el.tags and find_member(el.tags.who, ev.player_index)
@@ -932,7 +935,10 @@ end)
 script.on_event({ defines.events.on_player_display_resolution_changed, defines.events.on_player_display_scale_changed },
   function(ev)
     local player = game.get_player(ev.player_index)
-    if player then keep_on_screen(player) end
+    if player then
+      keep_on_screen(player)
+      cards.update(player)
+    end
   end)
 
 script.on_event(defines.events.on_player_created, function(ev) add_button(game.get_player(ev.player_index)) end)
@@ -975,10 +981,10 @@ end
 -- what the other files use of this one, and its link: control.lua calls it once all files are loaded
 return {
   share = { act = act, add_button = add_button, build_panel = build_panel, check_ai = check_ai, fstd = fstd,
-    hover = hover, mod_gui = mod_gui, open_frame = open_frame, place_window = place_window, refresh = refresh, resync_buttons = resync_buttons,
+    hover = hover, mod_gui = mod_gui, status_text = status_text, open_frame = open_frame, place_window = place_window, refresh = refresh, resync_buttons = resync_buttons,
     theme = theme, ui = ui },
   link = function(A)
-    ai_state, CREW, crew, DOING_WORD, find_member = A.ai_state, A.CREW, A.crew, A.DOING_WORD, A.find_member
+    ai_state, cards, CREW, crew, DOING_WORD, find_member = A.ai_state, A.cards, A.CREW, A.crew, A.DOING_WORD, A.find_member
     goal_have, gun_range, jobs, llm_settings, MAX_CREW = A.goal_have, A.gun_range, A.jobs, A.llm_settings, A.MAX_CREW
     members_of, needs, order, player_setting, pretty = A.members_of, A.needs, A.order, A.player_setting, A.pretty
     py, speak, trait = A.py, A.speak, A.trait
