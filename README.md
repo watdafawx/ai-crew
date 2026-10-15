@@ -213,8 +213,9 @@ A party frame for each of your crew, as in an RPG, stacked in a column in the mi
 following, staying), a health bar with its numbers, what they're doing (or saying), and armor, gun, ammo and fish as
 small icons. Their record (kills, built, trips, times down) is in the frame's tooltip. A ring goes round a frame in
 their colour while they talk, red while they fight; while they're down it's grey and counts down to their return.
-Click a frame for their pockets: their gear and what they carry, a stack clicked comes to you, Take all takes what
-they carry (the game can't open another character's inventory for a mod). The "Crew cards" setting (also in the
+Click a frame for their inventory, as clicking them does, when they're in your reach; further off (where the game
+won't open it) for their pockets: their gear and what they carry, a stack clicked comes to you, Take all takes what
+they carry. The "Crew cards" setting (also in the
 window's gear panel, with the side) hides them. A column that wouldn't fit the screen's height is drawn smaller.
 
 On top, an "Everyone" strip holds the window's orders for the whole crew as icon buttons: build, deconstruct,
@@ -322,8 +323,8 @@ python test/run_gui.py             real client (FSE launcher): every tab screens
                                    then at fse-std's window scale 150 % (--scale 2: the game's GUI at 200 %)
 python test/run_gui.py ac-info     real client: the crew's rows in the game's own info panel (the game window grabbed)
 python test/run_cards.py [--scale 2] real client (FSE launcher, single player): the crew cards (the web page): one each,
-                                   in the middle of the left edge, gear and health; talking, fighting, down; a card
-                                   clicked: the pockets window; the corner card's Follow me; the setting off and on; "Bottom right"; one fired. Shots:
+                                   in the middle of the left edge, gear and health; talking, fighting, down; cards clicked: an
+                                   inventory in reach, the pockets window out of it; the corner card's Follow me; the setting off and on; "Bottom right"; one fired. Shots:
                                    test/run/script-output/ac-cards-*.png (the game and the page, composited)
 python test/run_gui.py ac-follow   real client: the crew follow you through a block of machines (slow pathfinder)
 python test/run_gui.py ac-play     real client: hire (roam), your reach copied, help when you're bitten, a following build without bouncing, a tier upgrade

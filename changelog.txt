@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.23.1
+Date: 2026-10-15
+  Changes:
+    - Clicking a crew card opens their inventory, as clicking them does, when they're in your reach. Further off it
+      opens their pockets window as before (the game won't open a character's inventory out of reach).
+---------------------------------------------------------------------------------------------------
 Version: 0.23.0
 Date: 2026-10-14
   Changes:

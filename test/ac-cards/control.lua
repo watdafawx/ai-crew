@@ -2,7 +2,8 @@
 -- launcher: the cards are the web page, screenshots composited by the runner); in a game without the web plugin
 -- (multiplayer, the factorio MCP's client) the game's GUI cards are checked the same way.
 -- Four crew, Rook armed, hurt and carrying fish: a card each, centre left, Rook's with his gear and health.
--- Then Mara talks, Rook fights, Juno is down: the cards say so. Rook's card clicked: his pockets. The "Crew
+-- Then Mara talks, Rook fights, Juno is down: the cards say so. Cards clicked: Rook's (out of reach) his pockets,
+-- Mara's (in reach) her inventory. The "Crew
 -- cards" setting (and its checkbox in the window's gear panel): off, no cards; on, back. Bolt fired: three.
 -- The corner card's Follow me: all of them follow. Centre left by default; "Bottom right" moves them there.
 -- The runner answers ac-cards-want-<n>.txt ("shot <name>" / "click <member>") within a second.
@@ -115,7 +116,9 @@ local steps = {
   -- the corner card's "Follow me": all of them follow (Mara was told to stay)
   [305] = function() if state().web then want("cmd follow") else remote.call("ai-crew", "press", 1, "follow") end end,
   -- a click on Rook's card: his pockets (a window: the game can't open his inventory for a script)
-  [320] = function()
+  [320] = function()  -- (Rook out of reach: his pockets)
+    local p = game.get_player(1)
+    storage.rook.teleport({ p.position.x + 60, p.position.y })
     if state().web then want("click Rook") else remote.call("ai-crew", "card_click", 1, "Rook") end
   end,
   [480] = function()
@@ -126,9 +129,20 @@ local steps = {
     for _, t in pairs(gun and gun.children or {}) do
       for _, b in pairs(t.children) do if b.sprite == "item/submachine-gun" then has = true end end
     end
-    check(w and w.tags.aic_who == "Rook" and has, "Rook's card clicked: his pockets, his gun in them")
+    check(w and w.tags.aic_who == "Rook" and has, "Rook's card clicked, out of reach: his pockets, his gun in them")
     shot("pockets")
+    if w then w.destroy() end
+    -- Mara's (following: in reach): her own inventory, as clicking her does
+    if state().web then want("click Mara") else remote.call("ai-crew", "card_click", 1, "Mara") end
   end,
+  [500] = function()
+    local p = game.get_player(1)
+    if p.opened_gui_type ~= defines.gui_type.entity and (storage.waited or 0) < 1200 then return "wait" end
+    check(p.opened_gui_type == defines.gui_type.entity and p.opened == member("Mara"),
+      "Mara's card clicked, in reach: her inventory (" .. tostring(p.opened and p.opened.name) .. ")")
+    shot("inventory")
+  end,
+  [510] = function() game.get_player(1).opened = nil end,
   [520] = function()
     local w = game.get_player(1).gui.screen.aic_pockets
     if w then w.destroy() end

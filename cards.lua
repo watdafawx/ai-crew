@@ -196,8 +196,9 @@ local function place(player, list)
 end
 
 -- ------------------------------------------------------------------------------------------------------------ pockets
--- A card clicked: that crew member's pockets in a window (a script can't open another character's inventory): their
--- armor, gun and ammo, then what they carry, a slot a stack. A stack clicked comes to you; Take all takes everything
+-- A card clicked: that crew member's inventory, as clicking them does, when they're in your reach; further off (the
+-- game opens a character's only within reach) their pockets in a window: their armor, gun and ammo, then what they
+-- carry, a slot a stack. A stack clicked comes to you; Take all takes everything
 -- they carry (not their gear). Kept current while open.
 local POCKETS = "aic_pockets"
 
@@ -299,6 +300,14 @@ function cards.pockets(player, name)
   if theme then theme.adopt(frame) end
 end
 
+-- a card clicked: their inventory (in reach), else their pockets
+function cards.open(player, name)
+  local m = member_named(player, name)
+  if not m then return end
+  player.opened = m.entity
+  if player.opened ~= m.entity then cards.pockets(player, name) end
+end
+
 -- a stack (or all they carry) to the player: what fits in their pockets
 local function take(player, el)
   local t = el.tags
@@ -325,7 +334,7 @@ local function take(player, el)
   if f then fill_pockets(player, f) end
 end
 
--- a click on a card (any part of it): that crew member's pockets; in the pockets window, a stack taken
+-- a click on a card (any part of it): that crew member's inventory or pockets; in the pockets window, a stack taken
 function cards.click(player, el)
   if not (el and el.valid) then return false end
   if el.tags and el.tags.aic_take then take(player, el) return true end
@@ -336,7 +345,7 @@ function cards.click(player, el)
   while el and el.valid do
     local who = el.tags and el.tags.aic_card_of
     if who then
-      if not el.tags.aic_down then cards.pockets(player, who) end
+      if not el.tags.aic_down then cards.open(player, who) end
       return true
     end
     if el.parent == nil or el.parent == player.gui.screen then return false end
@@ -450,7 +459,7 @@ if shell then
     elseif data.cmd == "order" and ORDERS[data.act] then  -- (the corner card: an order for everyone)
       act(player, data.act)
     elseif data.cmd == "open" then
-      cards.pockets(player, data.name)
+      cards.open(player, data.name)
     end
   end)
 end
@@ -526,7 +535,7 @@ end
 function cards.test_click(player, name)
   local f = shown(player)[name]
   if f then return cards.click(player, f.aic_card.aic_body) end
-  cards.pockets(player, name)
+  cards.open(player, name)
 end
 
 -- ------------------------------------------------------------------------------------------------------------- shared
