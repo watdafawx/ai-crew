@@ -6,7 +6,8 @@
 -- Mara's (in reach) her inventory. The "Crew
 -- cards" setting (and its checkbox in the window's gear panel): off, no cards; on, back. Bolt fired: three.
 -- The corner card's Follow me: all of them follow. Centre left by default; "Bottom right" moves them there.
--- Web only (the runner checks these): another shell over the cards hides them, the pause menu hides them.
+-- Web only (the runner checks these): another shell over the cards hides them, the pause menu hides them, a game
+-- window (a screen frame) over them hides them.
 -- The runner answers ac-cards-want-<n>.txt ("shot <name>" / "click <member>") within a second.
 script.on_init(function()
   local fp = remote.interfaces["freeplay"]
@@ -31,6 +32,12 @@ local function shot(name)
   want("shot " .. name)
 end
 local function state() return remote.call("ai-crew", "cards", 1) end
+-- (the web plugin's view of the shells: the cards' window, shown or not, covered or not)
+local function native_status()
+  local ok, out = pcall(native.call, "web", "shell_status", "")
+  return ok and out and helpers.json_to_table(out) or {}
+end
+local function cards_shell() return (native_status().shells or {})["ai-crew/aic_cards"] end
 local function by_name(st)
   local t = {}
   for _, c in ipairs(st.sent or {}) do t[c.name] = c end
@@ -95,6 +102,7 @@ local steps = {
   -- (the runner: another shell over the cards, then the pause menu; web only)
   [135] = function() if state().web then want("cover") end end,
   [145] = function() if state().web then want("pause") end end,
+
   -- talking, fighting, down
   [200] = function()
     remote.call("ai-crew", "order", 1, "Mara stay")
@@ -170,6 +178,29 @@ local steps = {
   [660] = function()
     check(count(state()) == 0, "the setting off: no cards")
     remote.call("ai-crew", "setting", 1, "cards", true)
+  end,
+  -- a game window (a mod's screen frame) over the cards: they hide; closed: back (the web plugin's own view of them)
+  [700] = function()
+    if not state().web then return end
+    local p = game.get_player(1)
+    local f = p.gui.screen.add({ type = "frame", name = "ac_cover", caption = "Over the cards" })
+    f.style.width, f.style.height = 400, 200
+    f.location = { 30 * p.display_scale, p.display_resolution.height / 2 - 100 * p.display_scale }
+  end,
+  [702] = function()
+    if not state().web then return end
+    local c = cards_shell()
+    if not (c and c.covered) and (storage.waited or 0) < 2000 then return "wait" end
+    check(c and c.covered and not c.visible, "a game window over the cards: they hide (" .. serpent.line(c and
+      { covered = c.covered, visible = c.visible, windows = native_status().game_windows }) .. ")")
+    shot("game-covered")
+    game.get_player(1).gui.screen.ac_cover.destroy()
+  end,
+  [704] = function()
+    if not state().web then return end
+    local c = cards_shell()
+    if not (c and c.visible) and (storage.waited or 0) < 2400 then return "wait" end
+    check(c and c.visible and not c.covered, "that window closed: the cards back")
   end,
   [720] = function()
     check(count(state()) == 4, "on again: back (" .. count(state()) .. ")")

@@ -133,9 +133,11 @@ def inject(what):
 
 
 def cover():
+    (OUT / f"{TEST}-gui.json").write_text(json.dumps(api("/api/native/web/gui_dump", {}, timeout=10), indent=0))
     s = (status().get("shells") or {}).get(KEY) or {}
     r = s.get("rect") or [0, 0, 100, 100]
-    check(s.get("hud") is True and s.get("visible"), f"the cards: a HUD shell, shown ({s.get('hud')}, {s.get('visible')})")
+    check(s.get("hud") is True and s.get("visible"), f"the cards: a HUD shell, shown ({s.get('hud')}, {s.get('visible')}, "
+          f"covered {s.get('covered')}, game windows {status().get('game_windows')})")
     over = {"owner": "ac-cards-test", "name": "cover", "page": "__ai-crew__/web/cards.html", "esc": False,
             "rect": [r[0] + 20, r[1] + r[3] // 2 - 60, 400, 120]}
     api("/api/native/web/shell_open", over)
