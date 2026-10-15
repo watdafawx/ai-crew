@@ -364,7 +364,8 @@ end
 -- With the fse loader's web plugin (single player), the cards are a web page over the game (fse-std's shells,
 -- web/cards.html): a column centre left or bottom right, see-through between the cards, a ring in their colour while they
 -- talk, red while they fight, grey while they're down. The game's GUI cards above are the fallback (no loader,
--- multiplayer). The page gets a snapshot whenever one differs from the last it got.
+-- multiplayer). The page gets a snapshot whenever one differs from the last it got. A HUD shell: it hides while
+-- another shell (bpgen's window) covers a card, and while the game is paused.
 local shell
 if script.active_mods["fse-std"] then
   local ok, s = pcall(require, "__fse-std__/shell")
@@ -438,7 +439,8 @@ local function web_update(player, all)
   local key = side .. h .. "+" .. lift .. "@" .. res.width .. "x" .. res.height .. "/" .. ds .. "/" .. scale
   if not shell.is_open(player, SHELL) or sized[i] ~= key then
     shell.open(player, { name = SHELL, page = PAGE, size = { w, h }, anchor = side == "bottom-right" and "bottom-right"
-      or "left", margin = EDGE, offset = { 0, -math.floor(lift / scale) }, scale = scale, esc = false, yield = true })
+      or "left", margin = EDGE, offset = { 0, -math.floor(lift / scale) }, scale = scale, esc = false, yield = true,
+      hud = true })
     sized[i] = key
   end
   local list = {}

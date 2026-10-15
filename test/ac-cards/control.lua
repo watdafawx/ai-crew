@@ -6,6 +6,7 @@
 -- Mara's (in reach) her inventory. The "Crew
 -- cards" setting (and its checkbox in the window's gear panel): off, no cards; on, back. Bolt fired: three.
 -- The corner card's Follow me: all of them follow. Centre left by default; "Bottom right" moves them there.
+-- Web only (the runner checks these): another shell over the cards hides them, the pause menu hides them.
 -- The runner answers ac-cards-want-<n>.txt ("shot <name>" / "click <member>") within a second.
 script.on_init(function()
   local fp = remote.interfaces["freeplay"]
@@ -91,6 +92,9 @@ local steps = {
     end
     shot("four")
   end,
+  -- (the runner: another shell over the cards, then the pause menu; web only)
+  [135] = function() if state().web then want("cover") end end,
+  [145] = function() if state().web then want("pause") end end,
   -- talking, fighting, down
   [200] = function()
     remote.call("ai-crew", "order", 1, "Mara stay")

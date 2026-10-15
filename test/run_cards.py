@@ -4,7 +4,8 @@ This runner answers the test's wants (ac-cards-want-<n>.txt): "shot <name>" -> r
 the game window and the page over it as the screen shows them (PrintWindow of each, the page cut by its region: never
 a grab of the screen); "click <member>" -> that card clicked in the page (its DOM click: the page's own handler sends
 the message); "cmd <act>" -> the corner card's
-order button clicked. --scale N: the game's GUI at N x 100 % (a config of the run's own). Never while your Factorio is open."""
+order button clicked; "cover" -> another shell (not a HUD) opened over the cards, then moved off them: the cards
+hide, then come back; "pause" -> Esc into the game (the pause menu): every shell hides, then Esc again: back. --scale N: the game's GUI at N x 100 % (a config of the run's own). Never while your Factorio is open."""
 import json, os, re, shutil, subprocess, sys, time, urllib.error, urllib.request
 from pathlib import Path
 
@@ -109,6 +110,56 @@ def composite(path):
     print("  screenshot", path.name, "(page shown)" if s and s.get("visible") else "(no page)", flush=True)
 
 
+checks = []
+
+
+def check(ok, what):
+    checks.append(ok)
+    print(("  PASS " if ok else "  FAIL ") + what, flush=True)
+
+
+def cards_visible(wait=3.0, want=True):
+    """the cards' window shown (or hidden) within `wait` s: the status's visible"""
+    end = time.time() + wait
+    while True:
+        s = (status().get("shells") or {}).get(KEY) or {}
+        if bool(s.get("visible")) == want or time.time() > end:
+            return s
+        time.sleep(0.1)
+
+
+def inject(what):
+    return api("/api/native/std/inject", dict({"focus": True}, **what))
+
+
+def cover():
+    s = (status().get("shells") or {}).get(KEY) or {}
+    r = s.get("rect") or [0, 0, 100, 100]
+    check(s.get("hud") is True and s.get("visible"), f"the cards: a HUD shell, shown ({s.get('hud')}, {s.get('visible')})")
+    over = {"owner": "ac-cards-test", "name": "cover", "page": "__ai-crew__/web/cards.html", "esc": False,
+            "rect": [r[0] + 20, r[1] + r[3] // 2 - 60, 400, 120]}
+    api("/api/native/web/shell_open", over)
+    s = cards_visible(6.0, want=False)
+    check(not s.get("visible") and s.get("covered"), f"another shell over a card: the cards hide ({s.get('covered')})")
+    composite(OUT / f"{TEST}-covered.png")
+    away = dict(over, rect=[r[0] + r[2] + 200, r[1], 300, 120])
+    api("/api/native/web/shell_set", {"owner": "ac-cards-test", "name": "cover", "rect": away["rect"]})
+    s = cards_visible()
+    check(s.get("visible") and not s.get("covered"), "that shell moved off them: the cards back")
+    api("/api/native/web/shell_close", {"owner": "ac-cards-test", "name": "cover"})
+
+
+def pause():
+    r = inject({"key": "escape"})
+    s = cards_visible(want=False)
+    st = status()
+    check(st.get("paused") and not s.get("visible"), f"the pause menu: paused {st.get('paused')}, the cards hidden ({r})")
+    composite(OUT / f"{TEST}-paused.png")
+    inject({"key": "escape"})
+    s = cards_visible()
+    check(s.get("visible") and not status().get("paused"), "the game resumed: the cards back")
+
+
 start, done_wants = time.time(), set()
 while time.time() - start < 300 and not (OUT / (TEST + "-done.txt")).exists() and game.poll() is None:
     for f in sorted(OUT.glob(TEST + "-want-*.txt"), key=lambda f: int(re.findall(r"\d+", f.name)[-1])):
@@ -121,6 +172,10 @@ while time.time() - start < 300 and not (OUT / (TEST + "-done.txt")).exists() an
         time.sleep(0.4)  # (the page draws what it was sent)
         if what == "shot":
             composite(OUT / f"{TEST}-{arg}{'-x' + SCALE if SCALE else ''}.png")
+        elif what == "cover":
+            cover()
+        elif what == "pause":
+            pause()
         elif what == "cmd":  # (an order for everyone: the corner card's button clicked)
             r = api("/api/native/web/shell_eval", {"owner": "ai-crew", "name": "aic_cards",
                                                    "js": f"document.querySelector('.cmd[data-act=\"{arg}\"]').click()"})
@@ -136,4 +191,5 @@ res = OUT / (TEST + "-result.txt")
 print(res.read_text() if res.exists() else "no result")
 log = (RUN / "factorio-current.log").read_text(errors="replace").splitlines()
 print("errors:", "\n".join(l for l in log if "Error" in l or "non-recoverable" in l)[-2000:] or "none")
-sys.exit(0 if res.exists() and "ALL PASS" in res.read_text() else 1)
+print(f"runner checks: {sum(checks)}/{len(checks)} passed")
+sys.exit(0 if res.exists() and "ALL PASS" in res.read_text() and all(checks) else 1)

@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.23.2
+Date: 2026-10-15
+  Changes:
+    - The crew cards get out of the way: they hide while another web window (bpgen's) covers one of them, and while
+      the game is paused, and come back after. Needs FSE 0.17.9.
+---------------------------------------------------------------------------------------------------
 Version: 0.23.1
 Date: 2026-10-15
   Changes:
