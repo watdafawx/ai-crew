@@ -29,6 +29,6 @@ main(__file__, {"ac-test": 36010, "ac-place": 36010, "ac-asmfurnace": 36010, "ac
                 "ac-train": 9100, "ac-belt": 6100, "ac-hint": 18800, "ac-jet": 6100, "ac-roam": 36010,
                 "ac-roam2": 36010, "ac-farpower": 18100, "ac-fight": 36010, "ac-line": 72010, "ac-power": 144010,
                 "ac-boot": 36010, "ac-goal": 36010, "ac-path": 7510, "ac-bots": 3610, "ac-trip": 7300, "ac-backed": 3100,
-                "ac-plates": 6100, "ac-orders": 6100, "ac-perf": 4720,
+                "ac-plates": 6100, "ac-fetch": 9100, "ac-orders": 6100, "ac-perf": 4720,
                 "ac-parity": 9000, "ac-shoot": 5000,
                 "ac-checks": 36010, "ac-reuse": 36010})

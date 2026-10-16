@@ -559,6 +559,13 @@ local function need_machine(m, r, item, depth)
       return power_to(m, f, depth)
     end
   end
+  -- (the base made some this last hour: it's fetched from belts, chests and machines (far_find), never a machine
+  -- built for it here; only an item nothing has made yet gets one, as a new game's first plates)
+  local made = e.force.get_item_production_statistics(e.surface).get_flow_count({ name = item, category = "input",
+    precision_index = defines.flow_precision_index.one_hour, count = true })
+  if made > 0 then
+    return nil, "The base makes " .. pretty(item) .. ", but there's none on a belt, in a chest or a machine I can get to. I won't build another machine for it."
+  end
   -- (never a row of them: three of the crew's own for this already and none usable means something else is wrong)
   local own = 0
   for _, b in pairs(storage.crew_built or {}) do
@@ -585,12 +592,14 @@ local function need_machine(m, r, item, depth)
   return nil, why
 end
 
--- what's made beyond reach for plan(): chests within 160 tiles, else belts within 80 (not those near you or home:
--- those count as had, nor in a keep-out zone or a bpgen line); the nearest, from where the search began. A big base
+-- what's made beyond reach for plan(): chests within 160 tiles, else belts within 120 (not those near you or home:
+-- those count as had), else machines' outputs within 160 (furnaces, assemblers: near ones too); never in a keep-out
+-- zone or a bpgen line; the nearest, from where the search began. A big base
 -- has thousands of each: searched in bands 8 tiles high, ~300 entities a call, kept in storage between calls (the
 -- answer picks the job: the same on every peer, and a load mid-search goes on). "scan" till done, then where or nil
 local FAR = { { types = { "container", "logistic-container" }, r = 160 },
-  { types = { "transport-belt", "underground-belt", "splitter" }, r = 80, near = 25 } }
+  { types = { "transport-belt", "underground-belt", "splitter" }, r = 120, near = 25 },
+  { types = { "furnace", "assembling-machine" }, r = 160, near = 0 } }
 local function far_find(m, item)
   local e = m.entity
   m.far_scan = m.far_scan or {}
@@ -606,12 +615,12 @@ local function far_find(m, item)
     local ph = FAR[sc.phase]
     local r, near = ph.r, ph.near or RADIUS
     sc.y = sc.y or math.floor(sc.at.y - r)
-    if sc.y > sc.at.y + r then -- (this kind all looked at: the belts only when no chest has any)
-      if sc.best or sc.phase == 2 then
+    if sc.y > sc.at.y + r then -- (this kind all looked at: the next kind only when none of this one has any)
+      if sc.best or sc.phase == #FAR then
         m.far_scan[item] = nil
         return sc.best
       end
-      sc.phase, sc.y = 2, nil
+      sc.phase, sc.y = sc.phase + 1, nil
     else
       local y0, y1, x = sc.y, sc.y + 8, sc.at.x
       sc.y = y1
@@ -625,8 +634,8 @@ local function far_find(m, item)
         local d = dist2(p, sc.at)
         if p.y >= y0 and p.y < y1 and d <= r * r and not (sc.bd and d >= sc.bd) and dist2(p, sc.home) > near * near then
           local n -- (counted only when it'd be the nearest yet)
-          if sc.phase == 1 then
-            local inv = ent.get_inventory(defines.inventory.chest)
+          if sc.phase ~= 2 then
+            local inv = ent.get_inventory(sc.phase == 1 and defines.inventory.chest or OUT[ent.type])
             n = inv and inv.get_item_count(item) or 0
           else
             n = ent.get_item_count(item)
@@ -661,7 +670,8 @@ plan = function(m, item, n, depth)
   end
   local mr = machine_recipe(e.force, item)
   if mr then
-    -- made in a machine: first what's already made, in chests (160 tiles), else on belts (80) beyond the usual reach
+    -- made in a machine: first what's already made, in chests (160 tiles), else on belts (120), else in machines'
+    -- outputs (160) beyond the usual reach
     -- (not in a keep-out zone or a bpgen line, nor at hand already: chests and belts near you or home count as had),
     -- fetched and brought home. None anywhere: not looked for again for 10 s; a place that gave nothing: a minute
     m.far_skip = m.far_skip or {}
@@ -781,7 +791,8 @@ JOBS.feed = function(m, job)
 end
 
 -- takes the product off the belts at a line's output and delivers it
--- what's on the belts (and, fetching from further out, in the chests) round job.at, up to job.count when it has one
+-- what's on the belts (and, fetching from further out, in the chests and machines' outputs) round job.at, up to
+-- job.count when it has one
 JOBS.collect = function(m, job)
   local e = m.entity
   if not go(m, job.at, math.max(e.reach_distance - 3, 2)) then return false end
@@ -799,9 +810,9 @@ JOBS.collect = function(m, job)
       end
     end
   end
-  for _, c in pairs(job.far and e.surface.find_entities_filtered({ type = { "container", "logistic-container" }, force = e.force,
-    position = job.at, radius = 2 }) or {}) do
-    local src = c.get_inventory(defines.inventory.chest)
+  for _, c in pairs(job.far and e.surface.find_entities_filtered({ type = { "container", "logistic-container", "furnace",
+    "assembling-machine" }, force = e.force, position = job.at, radius = 2 }) or {}) do
+    local src = c.get_inventory(OUT[c.type] or defines.inventory.chest)
     local n = src and math.min(src.get_item_count(job.item), want()) or 0
     local got = n > 0 and inv.insert({ name = job.item, count = n }) or 0
     if got > 0 then

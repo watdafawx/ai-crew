@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.24.0
+Date: 2026-10-16
+  Changes:
+    - No more furnaces everywhere: the crew build a machine only for an item your base hasn't made in the last hour
+      (a new game's first plates). What the base makes they fetch: from chests up to 160 tiles away, belts up to 120
+      (was 80) and now machines' outputs up to 160 (a furnace's plates); with none in reach they say so instead.
+---------------------------------------------------------------------------------------------------
 Version: 0.23.2
 Date: 2026-10-15
   Changes:

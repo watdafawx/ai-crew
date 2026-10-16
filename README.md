@@ -75,8 +75,8 @@ line".
 **They work for what they lack.** A ghost whose item nobody has, a craft order short on ingredients, or "get" for
 something only a machine makes becomes a *need*, worked on before the goal. The plan for any item, step by step:
 take it if it's around; mine it if there's a source nearby (ore, stone, coal, trees); hand-craft it; for what only a
-machine makes (plates), first go and get what's already made, in a chest up to 160 tiles away or on a belt up to 80,
-and bring it home; otherwise run its recipe in a free machine near you: load the ingredients, fuel burners (coal, else wood, mined if need be), collect the
+machine makes (plates), first go and get what's already made, in a chest up to 160 tiles away, on a belt up to 120 or in
+a machine's output (a furnace's plates) up to 160, and bring it home; otherwise run its recipe in a free machine near you: load the ingredients, fuel burners (coal, else wood, mined if need be), collect the
 output. They borrow only machines of yours that no inserter or loader feeds or empties and with no pipes on them (anything
 in a production line is left alone), and put their own on their grid, 3 tiles clear of your buildings, ghosts and floors (concrete, paths),
 beside the ones they built before; never more than three of a kind. Yours come first (those already on the recipe,
@@ -84,7 +84,9 @@ then idle ones), then their own: what's there is used before anything is built. 
 need a recipe chosen) get it set when they're empty and idle; one of yours on another recipe is set back after.
 
 **They build what the plan needs.** No free machine for a recipe? They make one (burner-powered kinds first, so a
-stone furnace for smelting) and set it up near you; with "Crew build machines" off (the window's gear, or Mod
+stone furnace for smelting) and set it up near you, but only for an item your base hasn't made in the last hour (a new
+game's first plates): what the base makes they fetch from its belts, chests and machines, and say so when there's none
+within reach, never a furnace of their own beside your smelters; with "Crew build machines" off (the window's gear, or Mod
 settings) they never do, and say what they'd need. An electric machine standing dark gets power: poles grown from
 the nearest powered pole, or from a generator; with no power anywhere they build steam at the nearest water (offshore
 pump, boiler, steam engine, each trial-placed and kept only when its pipes connect, so modded ones work too). Boilers,
@@ -299,6 +301,8 @@ python test/run.py ac-parity 9000 headless game: the crew get a stand-in owner's
                                    the force's crafting and mining speed; following, a far row of ghosts built in one go
 python test/run.py ac-backed 3100  headless game: drills onto ground are "backed up"; drills onto a full belt are not
 python test/run.py ac-plates 6100  headless game: plates fetched from a chest 100 tiles out, no furnace; machines off: none
+python test/run.py ac-fetch 9100   headless game: plates the base makes fetched from a belt 110 out and a furnace 130 out; none
+                                   anywhere: no furnace built
 python test/run.py ac-perf 4720    headless game: a big base (2000 chests, 10000 belts): the crew's cost a tick, a plan, a hint
 python test/run.py ac-hint 18800   headless game: starved machines pointed out (once), research suggested after 5 idle minutes
 python test/run.py ac-jet 6100     headless game: a rock inside a closed ring of walls: fly in, mine it, fly out
