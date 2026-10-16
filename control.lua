@@ -606,6 +606,20 @@ remote.add_interface("ai-crew", {
     local s = game.get_surface(surface)
     return mark_base(owner, s, position, game.forces[force or "player"])
   end,
+  -- what a crew member counts of an item and where (read-only, for a look at a live game): its pockets, its owner's
+  -- (when it can see them), the chests and belts near the owner or home, the network
+  have = function(name, item, quality)
+    local m = crew()[name]
+    if not m then return end
+    local id = { name = item, quality = quality or "normal" }
+    local c = owner_char(m)
+    local p = m.owner and game.get_player(m.owner)
+    return { owner = m.owner, owner_char = c and c.name, player_char = p and p.character and p.character.name,
+      player_surface = p and p.surface.name, crew_surface = m.entity.surface.name, anchor = anchor(m),
+      own = m.entity.get_main_inventory().get_item_count(id), owners = c and c.get_main_inventory().get_item_count(id),
+      available = available(m, item, quality), player_pockets = p and p.character and p.character.get_main_inventory().get_item_count(id),
+      player_any_quality = p and p.character and p.character.get_main_inventory().get_item_count(item) }
+  end,
   base = function(owner)
     local b = storage.bases and storage.bases[owner or 0]
     return b and { chunks = b.chunks and #b.chunks, pin = b.pin, filling = b.fill ~= nil }

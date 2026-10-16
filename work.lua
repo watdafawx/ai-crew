@@ -102,7 +102,7 @@ local function upgrade_item(ent)
 end
 
 -- the nearest of `targets` whose item (item_of) it has, can take, or can hand-craft; and {item, count, single} to
--- craft first. What none of them can get is noted in job.missing (item -> how many short)
+-- craft first. What none of them can get is noted in job.missing ("item/quality" -> {name, quality, n}: how many short)
 local function next_target(m, job, targets, item_of)
   local e = m.entity
   local cache, craftable, demand, best, bd, best_k = {}, {}, {}, nil, nil, nil
@@ -135,7 +135,7 @@ local function next_target(m, job, targets, item_of)
       end
     end
   end
-  for k, it in pairs(job.short) do job.missing[it.name] = demand[k] - cache[k] end
+  for k, it in pairs(job.short) do job.missing[k] = { name = it.name, quality = it.quality, n = demand[k] - cache[k] } end
   if not best then return end
   claims()[key_of(best)] = m.name
   local it = item_of(best)
@@ -207,17 +207,23 @@ local function next_upgrade(m, job)
   return next_target(m, job, list, upgrade_item)
 end
 
--- what it did and what it's missing; on its own (auto) only news: something done, or a new shortage
+-- what it did and what it's missing; on its own (auto) only news: something done, or a new shortage. A need only for
+-- normal quality: the hand makes nothing better, so a rare machine's ghost can't be worked for (a need for the item by
+-- name made a normal one, handed it over and found the ghost still wanting a rare one: again and again)
 local function report(m, job, verb, reason)
   local parts = {}
   if job.n > 0 then parts[#parts + 1] = verb .. " " .. job.n .. "." end
-  local miss = {}
-  for name, n in pairs(job.missing or {}) do
-    miss[#miss + 1] = pretty(name)
-    if type(n) == "number" and n > 0 then add_need(m.owner, name, n, reason or "the blueprint") end
+  local miss, better = {}, false
+  for name, it in pairs(job.missing or {}) do
+    if type(it) == "number" then it = { name = name, quality = "normal", n = it } end -- (a job from before 0.25.2)
+    local normal = it.quality == "normal"
+    miss[#miss + 1] = (normal and "" or it.quality .. " ") .. pretty(it.name)
+    if normal and it.n > 0 then add_need(m.owner, it.name, it.n, reason or "the blueprint") end
+    better = better or not normal
   end
   table.sort(miss)
-  local short = #miss > 0 and ("Out of " .. table.concat(miss, ", ", 1, math.min(#miss, 4)) .. ". I'll go get some.") or nil
+  local short = #miss > 0 and ("Out of " .. table.concat(miss, ", ", 1, math.min(#miss, 4)) .. "."
+    .. (better and " I can only make normal ones." or " I'll go get some.")) or nil
   local news = short and (not job.auto or short ~= m.said_short)
   if news then parts[#parts + 1] = short end
   m.said_short = short

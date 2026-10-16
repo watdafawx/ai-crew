@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.25.2
+Date: 2026-10-16
+  Bugfixes:
+    - A ghost or upgrade wanting a better quality (uncommon, rare...) no longer makes the crew hand-craft normal ones
+      for ever: they worked for the item by name, handed you a normal one, and the ghost still wanted the uncommon
+      one. Now they say "Out of uncommon assembling machine 2. I can only make normal ones." and leave it.
+  Changes:
+    - remote.call("ai-crew", "have", name, item, quality?): what a crew member counts of an item and where (read-only).
+---------------------------------------------------------------------------------------------------
 Version: 0.25.1
 Date: 2026-10-16
   Bugfixes:
