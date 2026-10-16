@@ -1,4 +1,12 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.25.1
+Date: 2026-10-16
+  Bugfixes:
+    - Roaming crew no longer hand-craft (or offer to make) what you have plenty of: placing machines you made long ago
+      counted as "used more than made", so they kept making assembling machines with stacks of them in your pockets.
+      An item with stock to cover the last 10 minutes' shortfall (your pockets, chests near you, the network, the
+      crew's pockets) isn't short.
+---------------------------------------------------------------------------------------------------
 Version: 0.25.0
 Date: 2026-10-16
   Changes:

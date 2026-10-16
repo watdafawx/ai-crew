@@ -2,7 +2,7 @@
 -- and hints. One of control.lua's files.
 
 -- (the other files' that this one uses: set by link, at the end)
-local a_an, any_player, available, canned, chatter, CREW, crew_built, dist2, gather, go, goals, gun_range,
+local a_an, any_player, available, canned, chatter, CREW, crew_built, dist2, gather, go, goal_have, goals, gun_range,
   handcraft_recipe, in_box, kept_out, key_of, line, llm_settings, members_of, needs, owner_char, player_setting,
   power_to, pretty, product_amount, py, RADIUS, remember, ROAM, say, spot, upgrade_item
 
@@ -294,7 +294,8 @@ end
 -- Proposals. Every 10 minutes, with no goal and nothing needed: they look at what your factory used more of than it
 -- made in the last 10 minutes (items with a recipe), and offer to deal with the worst of it: make a batch, or a
 -- production line when bpgen is there. "yes" (sure, ok, do it...) makes it the goal; "no" leaves that item alone for
--- half an hour. Unanswered, the offer lapses after 5 minutes.
+-- half an hour. Unanswered, the offer lapses after 5 minutes. Not an item you've stock of to cover that much (your
+-- pockets, chests near you, the network, the crew's pockets): placing machines you made long ago is no shortage.
 -- (ok(name, d): only items it passes, asked of the worse ones only)
 shortage = function(owner, surface, force, ok)
   local stats = force.get_item_production_statistics(surface)
@@ -307,7 +308,7 @@ shortage = function(owner, surface, force, ok)
         return stats.get_flow_count({ name = name, category = cat, precision_index = defines.flow_precision_index.ten_minutes, count = true })
       end
       local d = flow("output") - flow("input")
-      if d > 0 and (not bd or d > bd) and (not ok or ok(name, d)) then best, bd = name, d end
+      if d > 0 and (not bd or d > bd) and goal_have(owner, name) < d and (not ok or ok(name, d)) then best, bd = name, d end
     end
   end
   return best, bd
@@ -472,6 +473,7 @@ return {
   link = function(A)
     a_an, any_player, available, canned, chatter, CREW = A.a_an, A.any_player, A.available, A.canned, A.chatter, A.CREW
     crew_built, dist2, gather, go, goals, gun_range = A.crew_built, A.dist2, A.gather, A.go, A.goals, A.gun_range
+    goal_have = A.goal_have
     handcraft_recipe, in_box, kept_out, key_of, line = A.handcraft_recipe, A.in_box, A.kept_out, A.key_of, A.line
     llm_settings, members_of, needs, owner_char = A.llm_settings, A.members_of, A.needs, A.owner_char
     player_setting, power_to, pretty, product_amount = A.player_setting, A.power_to, A.pretty, A.product_amount

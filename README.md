@@ -310,6 +310,7 @@ python test/run.py ac-backed 3100  headless game: drills onto ground are "backed
 python test/run.py ac-plates 6100  headless game: plates fetched from a chest 100 tiles out, no furnace; machines off: none
 python test/run.py ac-base 10100   headless game: base marked along a 300-tile belt: plates fetched 280 out; a chest outside
                                    the base left alone, no furnace; marked again at the pin: forgotten
+python test/run.py ac-short 3100   headless game: 500 assembling machine 2 used, 1000 in stock: no batch or offer of them; pipes instead
 python test/run.py ac-fetch 9100   headless game: plates the base makes fetched from a belt 110 out and a furnace 130 out; none
                                    anywhere: no furnace built
 python test/run.py ac-perf 4720    headless game: a big base (2000 chests, 10000 belts): the crew's cost a tick, a plan, a hint
