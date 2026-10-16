@@ -76,12 +76,19 @@ line".
 something only a machine makes becomes a *need*, worked on before the goal. The plan for any item, step by step:
 take it if it's around; mine it if there's a source nearby (ore, stone, coal, trees); hand-craft it; for what only a
 machine makes (plates), first go and get what's already made, in a chest up to 160 tiles away, on a belt up to 120 or in
-a machine's output (a furnace's plates) up to 160, and bring it home; otherwise run its recipe in a free machine near you: load the ingredients, fuel burners (coal, else wood, mined if need be), collect the
+a machine's output (a furnace's plates) up to 160 (with your base marked: anywhere in it, see below), and bring it home; otherwise run its recipe in a free machine near you: load the ingredients, fuel burners (coal, else wood, mined if need be), collect the
 output. They borrow only machines of yours that no inserter or loader feeds or empties and with no pipes on them (anything
 in a production line is left alone), and put their own on their grid, 3 tiles clear of your buildings, ghosts and floors (concrete, paths),
 beside the ones they built before; never more than three of a kind. Yours come first (those already on the recipe,
 then idle ones), then their own: what's there is used before anything is built. Vanilla furnaces pick their own recipe; assembler-type machines (assemblers, and overhaul mods' furnaces that
 need a recipe chosen) get it set when they're empty and idle; one of yours on another recipe is set back after.
+
+**Mark your base.** "Mark base (AI Crew)" on the shortcut bar (or its key, unbound until you set one in Settings >
+Controls) pins your base where you stand; nothing is drawn. The base is every chunk of your buildings joined to the
+pin's, chunk next to chunk (machines, chests, belts, inserters, drills, pipes; not poles, rails or walls, so an outpost
+down a rail line stays out), found again every 10 minutes as it grows; chat says how big it came out. With it, the
+crew fetch what the base makes from anywhere in it, nearest first, and from nowhere outside it. Pressed again within 16
+tiles of the pin, the base is forgotten.
 
 **They build what the plan needs.** No free machine for a recipe? They make one (burner-powered kinds first, so a
 stone furnace for smelting) and set it up near you, but only for an item your base hasn't made in the last hour (a new
@@ -301,6 +308,8 @@ python test/run.py ac-parity 9000 headless game: the crew get a stand-in owner's
                                    the force's crafting and mining speed; following, a far row of ghosts built in one go
 python test/run.py ac-backed 3100  headless game: drills onto ground are "backed up"; drills onto a full belt are not
 python test/run.py ac-plates 6100  headless game: plates fetched from a chest 100 tiles out, no furnace; machines off: none
+python test/run.py ac-base 10100   headless game: base marked along a 300-tile belt: plates fetched 280 out; a chest outside
+                                   the base left alone, no furnace; marked again at the pin: forgotten
 python test/run.py ac-fetch 9100   headless game: plates the base makes fetched from a belt 110 out and a furnace 130 out; none
                                    anywhere: no furnace built
 python test/run.py ac-perf 4720    headless game: a big base (2000 chests, 10000 belts): the crew's cost a tick, a plan, a hint

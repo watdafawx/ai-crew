@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.25.0
+Date: 2026-10-16
+  Changes:
+    - "Mark base" (shortcut bar, or a key in Settings > Controls): pins your base where you stand, nothing drawn. The
+      base is every chunk of your buildings joined to the pin's; the crew fetch plates and the like from anywhere in
+      it instead of a fixed distance, and from nowhere outside it. Again near the pin: forgotten.
+---------------------------------------------------------------------------------------------------
 Version: 0.24.0
 Date: 2026-10-16
   Changes:

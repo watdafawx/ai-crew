@@ -74,7 +74,7 @@ local A = { a_an = a_an, ACKS = ACKS, ADA_COLOR = ADA_COLOR, ALIASES = ALIASES, 
   NAMES = NAMES, pick = pick, pretty = pretty, RADIUS = RADIUS, ROAM = ROAM, TRAIT_ORDER = TRAIT_ORDER,
   TRAITS = TRAITS }
 local JOBS = {} -- kind -> function(m, job): true when done (work.lua's, plan.lua's, fight.lua's)
-local FILE_NAMES = { "voice", "plan", "move", "work", "fight", "roam", "orders", "window", "cards" }
+local FILE_NAMES = { "voice", "base", "plan", "move", "work", "fight", "roam", "orders", "window", "cards" }
 local FILES = {}
 for i, name in ipairs(FILE_NAMES) do FILES[i] = require(name) end
 for _, f in ipairs(FILES) do
@@ -95,6 +95,7 @@ end
 linking = "control.lua"
 local act, ada, add_button, add_need, ai_state, alarm = A.act, A.ada, A.add_button, A.add_need, A.ai_state, A.alarm
 local anchor, any_player, available, build_panel, cards = A.anchor, A.any_player, A.available, A.build_panel, A.cards
+local base_step, mark_base = A.base_step, A.mark_base
 local chatter, check_ai, face, fight, find_member = A.chatter, A.check_ai, A.face, A.fight, A.find_member
 local flight, fly, forget_caches, fstd, fuel_available = A.flight, A.fly, A.forget_caches, A.fstd, A.fuel_available
 local go, goal_step, goals, gun_range, hear, hint = A.go, A.goal_step, A.goals, A.gun_range, A.hear, A.hint
@@ -339,6 +340,7 @@ end
 script.on_event(defines.events.on_tick, function(ev)
   local t = ev.tick
   if storage.aic_resync then resync_buttons(t) end -- (the crew button lit again after a join: window.lua)
+  if storage.bases then base_step(t) end -- (the marked bases' edges found, a slice a tick: base.lua)
   if not jobs.checked and t % 60 == 0 and not game.is_multiplayer() then -- (once a session, a second in: the
     jobs.checked = true                                                    -- AI tested for whoever is playing)
     storage.ai = nil -- (before 0.8.0)
@@ -598,6 +600,16 @@ remote.add_interface("ai-crew", {
   card_click = function(player_index, name) cards.test_click(game.get_player(player_index), name) end,
   test_char = function(c) storage.test_char = c end, -- (tests: a character standing in for the player's, when hit)
   test_owner = function(c) storage.test_owner = c end, -- (tests: a character standing in for an owner's, no player)
+  -- the owner's base pinned at position, as "Mark base" pressed there does (again near the pin: forgotten); the base
+  -- (its chunks once found, its pin)
+  mark_base = function(owner, surface, position, force)
+    local s = game.get_surface(surface)
+    return mark_base(owner, s, position, game.forces[force or "player"])
+  end,
+  base = function(owner)
+    local b = storage.bases and storage.bases[owner or 0]
+    return b and { chunks = b.chunks and #b.chunks, pin = b.pin, filling = b.fill ~= nil }
+  end,
   -- (tests) plan()'s next job for n of item, no far search skipped; its kind, or why none
   test_plan = function(name, item, n)
     local m = crew()[name]

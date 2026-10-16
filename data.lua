@@ -18,3 +18,11 @@ for i, act in ipairs({ "build", "deconstruct", "upgrade", "deliver", "follow", "
   data:extend({ { type = "custom-input", name = "ai-crew-order-" .. act, key_sequence = "", consuming = "none",
     order = "a" .. i } })
 end
+
+-- "Mark base" (base.lua): a shortcut bar button and a key (unbound, as the orders): a pin where you stand
+data:extend({
+  { type = "custom-input", name = "ai-crew-mark-base", key_sequence = "", consuming = "none", order = "b" },
+  { type = "shortcut", name = "ai-crew-mark-base", action = "lua", associated_control_input = "ai-crew-mark-base",
+    icon = "__base__/graphics/icons/iron-chest.png", icon_size = 64, small_icon = "__base__/graphics/icons/iron-chest.png",
+    small_icon_size = 64, order = "a[ai-crew]" },
+})

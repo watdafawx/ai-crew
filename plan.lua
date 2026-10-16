@@ -2,7 +2,7 @@
 -- plans: what it takes to make an item, bpgen lines, the next step towards a goal. One of control.lua's files.
 
 -- (the other files' that this one uses: set by link, at the end)
-local ada, ALIASES, any_player, CREW, crew, crew_built, dist2, DOING_WORD, gather, go, kept_out, low_burners,
+local ada, ALIASES, any_player, base_chunks, CREW, crew, crew_built, dist2, DOING_WORD, gather, go, kept_out, low_burners,
   nearest_source, needs, player_setting, pretty, product_amount, RADIUS, react, say
 
 local JOBS = {} -- (this file's jobs: feed, collect; control.lua's JOBS gets them)
@@ -594,12 +594,32 @@ end
 
 -- what's made beyond reach for plan(): chests within 160 tiles, else belts within 120 (not those near you or home:
 -- those count as had), else machines' outputs within 160 (furnaces, assemblers: near ones too); never in a keep-out
--- zone or a bpgen line; the nearest, from where the search began. A big base
--- has thousands of each: searched in bands 8 tiles high, ~300 entities a call, kept in storage between calls (the
--- answer picks the job: the same on every peer, and a load mid-search goes on). "scan" till done, then where or nil
+-- zone or a bpgen line; the nearest, from where the search began. With your base marked (base.lua): the same three, in
+-- all of the base and nowhere else, its chunks nearest first (done once no chunk left can hold a nearer one). A big base
+-- has thousands of each: searched in bands 8 tiles high (or a chunk at a time), ~300 entities a call, kept in storage
+-- between calls (the answer picks the job: the same on every peer, and a load mid-search goes on). "scan" till done,
+-- then where or nil
 local FAR = { { types = { "container", "logistic-container" }, r = 160 },
   { types = { "transport-belt", "underground-belt", "splitter" }, r = 120, near = 25 },
   { types = { "furnace", "assembling-machine" }, r = 160, near = 0 } }
+
+-- one entity found, nearer than the best yet (at p, d away) and not near home: does it hold some of item?
+local function far_seen(sc, ent, p, d, item, s)
+  local n -- (counted only when it'd be the nearest yet)
+  if sc.phase ~= 2 then
+    local inv = ent.get_inventory(sc.phase == 1 and defines.inventory.chest or OUT[ent.type])
+    n = inv and inv.get_item_count(item) or 0
+  else
+    n = ent.get_item_count(item)
+  end
+  if n > 0 and not kept_out(s, p) then
+    for _, g in pairs(storage.goals or {}) do
+      if g.line and g.line.box and in_box(g.line.box, p, 1) then return end
+    end
+    sc.best, sc.bd = { x = p.x, y = p.y }, d
+  end
+end
+
 local function far_find(m, item)
   local e = m.entity
   m.far_scan = m.far_scan or {}
@@ -607,6 +627,17 @@ local function far_find(m, item)
   if not sc or game.tick - sc.tick > 300 or sc.surface ~= e.surface.index then -- (new, or left off a while: afresh)
     local h, p = anchor(m), e.position
     sc = { surface = e.surface.index, at = { x = p.x, y = p.y }, home = { x = h.x, y = h.y }, phase = 1 }
+    local chunks = base_chunks(m)
+    if chunks then -- (each chunk with how near its nearest corner or edge is)
+      sc.list, sc.i = {}, 1
+      for _, c in ipairs(chunks) do
+        local x0, y0 = c[1] * 32, c[2] * 32
+        local dx = math.max(x0 - p.x, 0, p.x - x0 - 32)
+        local dy = math.max(y0 - p.y, 0, p.y - y0 - 32)
+        sc.list[#sc.list + 1] = { x0, y0, dx * dx + dy * dy }
+      end
+      table.sort(sc.list, function(a, b) return a[3] < b[3] end)
+    end
     m.far_scan[item] = sc
   end
   sc.tick = game.tick
@@ -614,13 +645,32 @@ local function far_find(m, item)
   while seen < 300 do
     local ph = FAR[sc.phase]
     local r, near = ph.r, ph.near or RADIUS
-    sc.y = sc.y or math.floor(sc.at.y - r)
-    if sc.y > sc.at.y + r then -- (this kind all looked at: the next kind only when none of this one has any)
+    local c = sc.list and sc.list[sc.i]
+    local done
+    if sc.list then
+      done = not c or (sc.bd and c[3] >= sc.bd)
+    else
+      sc.y = sc.y or math.floor(sc.at.y - r)
+      done = sc.y > sc.at.y + r
+    end
+    if done then -- (this kind all looked at: the next kind only when none of this one has any)
       if sc.best or sc.phase == #FAR then
         m.far_scan[item] = nil
         return sc.best
       end
-      sc.phase, sc.y = sc.phase + 1, nil
+      sc.phase, sc.y, sc.i = sc.phase + 1, nil, sc.list and 1
+    elseif sc.list then
+      sc.i = sc.i + 1
+      local list = s.find_entities_filtered({ type = ph.types, force = e.force,
+        area = { { c[1], c[2] }, { c[1] + 32, c[2] + 32 } } })
+      seen = seen + #list + 1
+      local at, home, bd, n2 = sc.at, sc.home, sc.bd, near * near
+      for _, ent in pairs(list) do
+        local p = ent.position
+        local dx, dy = p.x - at.x, p.y - at.y
+        local d = dx * dx + dy * dy
+        if not (bd and d >= bd) and dist2(p, home) > n2 then far_seen(sc, ent, p, d, item, s) bd = sc.bd end
+      end
     else
       local y0, y1, x = sc.y, sc.y + 8, sc.at.x
       sc.y = y1
@@ -629,24 +679,14 @@ local function far_find(m, item)
       local list = s.find_entities_filtered({ type = ph.types, force = e.force,
         area = { { x - w, y0 }, { x + w, y1 } } })
       seen = seen + #list
+      local at, home, bd, n2, r2 = sc.at, sc.home, sc.bd, near * near, r * r
       for _, ent in pairs(list) do
         local p = ent.position -- (each once: by its centre, in the band and the circle, as a radius search counts)
-        local d = dist2(p, sc.at)
-        if p.y >= y0 and p.y < y1 and d <= r * r and not (sc.bd and d >= sc.bd) and dist2(p, sc.home) > near * near then
-          local n -- (counted only when it'd be the nearest yet)
-          if sc.phase ~= 2 then
-            local inv = ent.get_inventory(sc.phase == 1 and defines.inventory.chest or OUT[ent.type])
-            n = inv and inv.get_item_count(item) or 0
-          else
-            n = ent.get_item_count(item)
-          end
-          if n > 0 and not kept_out(s, p) then
-            local in_line
-            for _, g in pairs(storage.goals or {}) do
-              if g.line and g.line.box and in_box(g.line.box, p, 1) then in_line = true break end
-            end
-            if not in_line then sc.best, sc.bd = { x = p.x, y = p.y }, d end
-          end
+        local dx, dy = p.x - at.x, p.y - at.y
+        local d = dx * dx + dy * dy
+        if p.y >= y0 and p.y < y1 and d <= r2 and not (bd and d >= bd) and dist2(p, home) > n2 then
+          far_seen(sc, ent, p, d, item, s)
+          bd = sc.bd
         end
       end
     end
@@ -926,6 +966,7 @@ return {
     resolve_item = resolve_item, sources = sources, sources_for = sources_for, take = take, unload = unload },
   link = function(A)
     ada, ALIASES, any_player, CREW, crew, crew_built = A.ada, A.ALIASES, A.any_player, A.CREW, A.crew, A.crew_built
+    base_chunks = A.base_chunks
     dist2, DOING_WORD, gather, go, kept_out = A.dist2, A.DOING_WORD, A.gather, A.go, A.kept_out
     low_burners, nearest_source, needs, player_setting = A.low_burners, A.nearest_source, A.needs, A.player_setting
     pretty, product_amount, RADIUS, react, say = A.pretty, A.product_amount, A.RADIUS, A.react, A.say
