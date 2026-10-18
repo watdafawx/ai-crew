@@ -73,7 +73,7 @@ def api(path, body=None, timeout=5):
 
 def find_port():
     global PORT
-    for p in range(8790, 8800):
+    for p in range(18790, 18800):
         PORT = p
         try:
             if api("/api/status", timeout=1).get("core"):
