@@ -234,7 +234,8 @@ local function science_check(silent)
   if not f then return end
   if not SCIENCE then
     SCIENCE = {}
-    for name in pairs(prototypes.get_item_filtered({ { filter = "type", type = "tool" } })) do SCIENCE[#SCIENCE + 1] = name end
+    -- (2.1: science packs are plain items; what labs take is "used-by-labs")
+    for name in pairs(prototypes.get_item_filtered({ { filter = "used-by-labs" } })) do SCIENCE[#SCIENCE + 1] = name end
   end
   storage.seen = storage.seen or {}
   for _, s in pairs(game.surfaces) do

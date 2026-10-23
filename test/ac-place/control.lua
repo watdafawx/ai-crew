@@ -47,7 +47,7 @@ script.on_nth_tick(600, function(ev)
   if inv.get_item_count("iron-plate") < 10 and ev.tick < 36000 then return end
   local untouched = true
   for _, pf in pairs(storage.player_furnaces) do
-    if not pf.get_inventory(defines.inventory.furnace_source).is_empty() or pf.products_finished > 0 then untouched = false end
+    if not pf.get_inventory(defines.inventory.crafter_input).is_empty() or pf.products_finished > 0 then untouched = false end
   end
   local clear, overlaps = #mine > 0, false
   for _, fur in pairs(mine) do

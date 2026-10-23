@@ -30,7 +30,7 @@ script.on_nth_tick(5, function(ev)
   s.create_entity({ name = "small-electric-pole", position = { 12.5, 0.5 }, force = f })
   storage.asm = s.create_entity({ name = "assembling-machine-1", position = { 27.5, 0.5 }, force = f, recipe = "iron-gear-wheel" })
   local n = s.create_entity({ name = "biter-spawner", position = { -20, -16 }, force = "enemy" })
-  n.active = false
+  n.disabled_by_script = true
   remote.call("ai-crew", "test_checks", false)
   remote.call("ai-crew", "test_pings", false)
   remote.call("ai-crew", "hire", "Rook", "nauvis", { x = 2, y = 2 })
@@ -55,7 +55,7 @@ script.on_nth_tick(600, function(ev)
     remote.call("ai-crew", "test_checks", true)
     remote.call("ai-crew", "test_pings", true)
     local n = game.surfaces.nauvis.create_entity({ name = "biter-spawner", position = { -16, 24 }, force = "enemy" })
-    n.active = false
+    n.disabled_by_script = true
     storage.phase = "on"
   elseif storage.phase == "on" then
     local pin = false

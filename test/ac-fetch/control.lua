@@ -41,7 +41,7 @@ script.on_event(defines.events.on_tick, function(ev)
       for lane = 1, 2 do for _ = 1, 3 do b.get_transport_line(lane).insert_at_back({ name = "iron-plate", count = 1 }) end end
     end
     storage.furnace = s.create_entity({ name = "stone-furnace", position = { 130, 0 }, force = f })
-    storage.furnace.get_inventory(defines.inventory.furnace_result).insert({ name = "copper-plate", count = 40 })
+    storage.furnace.get_inventory(defines.inventory.crafter_output).insert({ name = "copper-plate", count = 40 })
     local stats = f.get_item_production_statistics(s)
     for _, it in ipairs({ "iron-plate", "copper-plate", "stone-brick" }) do stats.on_flow(it, 500) end
     remote.call("ai-crew", "hire", "Rook", "nauvis", { x = 2, y = 2 })
@@ -59,7 +59,7 @@ script.on_event(defines.events.on_tick, function(ev)
     remote.call("ai-crew", "order", nil, "Rook get 20 copper plate")
   elseif t == 6000 then
     local home = storage.home.get_item_count("copper-plate")
-    local left = storage.furnace.get_inventory(defines.inventory.furnace_result).get_item_count("copper-plate")
+    local left = storage.furnace.get_inventory(defines.inventory.crafter_output).get_item_count("copper-plate")
     log(string.format("t=6000: home %d copper plates, far furnace %d, furnaces %d", home, left, furnaces()))
     check("took copper plates from the furnace 130 out (" .. (40 - left) .. " taken)", left <= 20 and home >= 20)
     check("built no furnace for copper plates", furnaces() == 0)

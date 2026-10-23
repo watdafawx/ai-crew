@@ -97,7 +97,9 @@ local steps = {
   end,
   [8700] = function()
     local stats = game.forces.player.get_item_production_statistics("nauvis")
-    stats.on_flow("iron-gear-wheel", -300) -- (300 gears used, none made)
+    stats.on_flow("iron-gear-wheel", -300) -- (300 gears used, none made; 2.1: counted at the end of the tick)
+  end,
+  [8701] = function()
     local offer = remote.call("ai-crew", "propose", nil)
     check("offers to deal with the gears running short", offer and offer.item == "iron-gear-wheel" and offer.count >= 100)
     hear("nah")
@@ -108,6 +110,8 @@ local steps = {
     local stats = game.forces.player.get_item_production_statistics("nauvis")
     game.forces.player.recipes["copper-cable"].enabled = true -- (locked at the start in 2.0)
     stats.on_flow("copper-cable", -200)
+  end,
+  [8801] = function()
     local offer = remote.call("ai-crew", "propose", nil)
     check("the next offer skips what was turned down", offer and offer.item == "copper-cable")
     hear("sure")
@@ -115,7 +119,7 @@ local steps = {
     check("\"sure\": the cable becomes the goal", g and g.item == "copper-cable" and g.count == offer.count)
   end,
 }
-local LAST = 8800
+local LAST = 8801
 
 script.on_event(defines.events.script_raised_revive, function(ev)
   if storage.revived and ev.entity.name == "wooden-chest" then table.insert(storage.revived, ev.tick) end

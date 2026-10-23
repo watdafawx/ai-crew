@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.26.0
+Date: 2026-10-24
+  Changes:
+    - Factorio 2.1: recipes with several crafting categories, the machines' new inventory names, fluid connections,
+      science packs as plain items.
+---------------------------------------------------------------------------------------------------
 Version: 0.25.2
 Date: 2026-10-16
   Bugfixes:

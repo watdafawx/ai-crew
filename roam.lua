@@ -79,7 +79,7 @@ local function belt_run(m, boxes, stock, tm)
     local near = b.belt_neighbours
     for _, x in pairs(near.inputs) do add(x) end
     for _, x in pairs(near.outputs) do add(x) end
-    if b.type == "underground-belt" then add(b.neighbours) end
+    if b.type == "underground-belt" then add(b.underground_belt_neighbour) end
   end
   local need, bad, far = {}, #run > 2000, (RADIUS - 2) ^ 2
   for _, b in ipairs(run) do
@@ -356,7 +356,7 @@ end
 -- the ingredient a machine of this recipe is out of
 local function missing_input(f)
   local r = f.get_recipe()
-  local inv = f.get_inventory(defines.inventory.crafter_input or defines.inventory.assembling_machine_input)
+  local inv = f.get_inventory(defines.inventory.crafter_input)
   if not (r and inv) then return end
   for _, ing in pairs(r.ingredients) do
     if ing.type == "item" and inv.get_item_count(ing.name) < ing.amount then return ing.name end

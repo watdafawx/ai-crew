@@ -23,7 +23,7 @@ script.on_nth_tick(5, function(ev)
   chest.insert({ name = "iron-plate", count = 2 })
   local am = s.create_entity({ name = "assembling-machine-1", position = { 12.5, 6.5 }, force = f })
   am.set_recipe("iron-gear-wheel")
-  am.get_inventory(defines.inventory.assembling_machine_input).insert({ name = "iron-plate", count = 20 })
+  am.get_inventory(defines.inventory.crafter_input).insert({ name = "iron-plate", count = 20 })
   am.order_upgrade({ force = f, target = "assembling-machine-2" })
   for i = 0, 2 do
     local b = s.create_entity({ name = "transport-belt", position = { 8.5 + i, -6.5 }, direction = D.east, force = f })
@@ -56,8 +56,8 @@ script.on_nth_tick(600, function(ev)
   local checks = {
     { "assembler upgraded", am ~= nil and s.count_entities_filtered({ name = "assembling-machine-1" }) == 0 },
     { "its recipe kept", recipe ~= nil and recipe.name == "iron-gear-wheel" },
-    { "its plates kept", am ~= nil and am.get_inventory(defines.inventory.assembling_machine_input).get_item_count("iron-plate") +
-      am.get_inventory(defines.inventory.assembling_machine_output).get_item_count("iron-gear-wheel") * 2 + (am.is_crafting() and 2 or 0) >= 20 },
+    { "its plates kept", am ~= nil and am.get_inventory(defines.inventory.crafter_input).get_item_count("iron-plate") +
+      am.get_inventory(defines.inventory.crafter_output).get_item_count("iron-gear-wheel") * 2 + (am.is_crafting() and 2 or 0) >= 20 },
     { "belts crafted and upgraded, direction kept", #fast == 3 and fast[1].direction == D.east },
     { "plates on the belts kept", on_belts == 3 },
     { "inserter crafted and upgraded, direction kept", fi ~= nil and fi.direction == D.west },

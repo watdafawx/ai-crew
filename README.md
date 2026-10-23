@@ -1,6 +1,6 @@
 # AI Crew
 
-Helper characters for Factorio 2.0 that work like construction bots with legs: they build your ghosts, clear
+Helper characters for Factorio 2.1 that work like construction bots with legs: they build your ghosts, clear
 deconstruction marks, mine, craft, smelt, fight, and work towards goals you set (setting up furnaces, assemblers,
 power and whole production lines when they need them), all from a window in game. With the
 [FSE](https://github.com/watdafawx/fse) loader they also chat through a free LLM, speak out loud, and ADA

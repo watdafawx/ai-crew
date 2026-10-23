@@ -50,10 +50,15 @@ local function hand_categories()
   return HAND
 end
 
+-- 2.1: a recipe has several categories; the first of them `set` (a machine's crafting_categories) has, or nil
+local function cat_in(r, set)
+  for _, c in pairs(r.categories) do if set[c] then return c end end
+end
+
 local function handcraft_recipe(force, item)
   local HAND = hand_categories()
   local r = force.recipes[item]
-  if r and r.enabled and not r.hidden and HAND[r.category] then return r end
+  if r and r.enabled and not r.hidden and cat_in(r, HAND) then return r end
 end
 
 local function owner_char(m)
@@ -234,7 +239,7 @@ local function machine_recipe(force, item)
     local list = {}
     local hand = hand_categories()
     for name, r in pairs(prototypes.recipe) do
-      local ok = not r.hidden and not hand[r.category] and #r.ingredients > 0
+      local ok = not r.hidden and not cat_in(r, hand) and #r.ingredients > 0
       for _, i in pairs(r.ingredients) do if i.type ~= "item" then ok = false end end
       local makes = false
       for _, p in pairs(r.products) do if p.type == "item" and p.name == item then makes = true end end
@@ -253,8 +258,8 @@ local function machine_recipe(force, item)
   end
 end
 
-local IN = { furnace = defines.inventory.furnace_source, ["assembling-machine"] = defines.inventory.assembling_machine_input }
-local OUT = { furnace = defines.inventory.furnace_result, ["assembling-machine"] = defines.inventory.assembling_machine_output }
+local IN = { furnace = defines.inventory.crafter_input, ["assembling-machine"] = defines.inventory.crafter_input }
+local OUT = { furnace = defines.inventory.crafter_output, ["assembling-machine"] = defines.inventory.crafter_output }
 
 -- machines near the owner free for this recipe, up to 4: a furnace that's empty or on the same input; an
 -- assembler-type machine (overhaul mods' furnaces too) already on this recipe, or standing idle with nothing in it (no
@@ -280,13 +285,13 @@ local function machines_for(m, r, item)
         if i.type == "inserter" and (i.drop_target == f or i.pickup_target == f)
           or i.type ~= "inserter" and i.loader_container == f then in_line = true break end
       end
-      for k = 1, in_line and 0 or #f.fluidbox do
-        if #f.fluidbox.get_connections(k) > 0 then in_line = true break end
+      for _, list in pairs(in_line and {} or f.fluidbox_neighbours) do
+        if #list > 0 then in_line = true break end
       end
     end
-    if not in_line and p.crafting_categories[r.category] and f.status ~= defines.entity_status.no_power
+    if not in_line and cat_in(r, p.crafting_categories) and f.status ~= defines.entity_status.no_power
       and not kept_out(f.surface, f.position)
-      and (not p.fixed_recipe or p.fixed_recipe == r.name) then
+      and (not p.fixed_recipe or p.fixed_recipe.name == r.name) then
       local src, res = f.get_inventory(IN[f.type]), f.get_inventory(OUT[f.type])
       local free
       if f.type == "furnace" then
@@ -395,8 +400,8 @@ end
 -- where water meets land nearest the owner: an offshore pump, a boiler on its output and a steam engine on the boiler's
 -- steam, found by trial-placing each piece and keeping it only when its fluidbox connects (modded pieces work too)
 local function connects(ent, to)
-  for i = 1, #ent.fluidbox do
-    for _, fb in pairs(ent.fluidbox.get_connections(i)) do if fb.owner == to then return true end end
+  for _, list in pairs(ent.fluidbox_neighbours) do
+    for _, n in pairs(list) do if n == to then return true end end
   end
   return false
 end
@@ -555,7 +560,7 @@ local function need_machine(m, r, item, depth)
   end
   for _, f in pairs(e.surface.find_entities_filtered({ type = { "furnace", "assembling-machine" }, force = e.force,
     position = anchor(m), radius = RADIUS })) do
-    if f.prototype.crafting_categories[r.category] and f.status == defines.entity_status.no_power then
+    if cat_in(r, f.prototype.crafting_categories) and f.status == defines.entity_status.no_power then
       return power_to(m, f, depth)
     end
   end
@@ -569,14 +574,16 @@ local function need_machine(m, r, item, depth)
   -- (never a row of them: three of the crew's own for this already and none usable means something else is wrong)
   local own = 0
   for _, b in pairs(storage.crew_built or {}) do
-    if b.valid and b.prototype.crafting_categories and b.prototype.crafting_categories[r.category]
+    if b.valid and b.prototype.crafting_categories and cat_in(r, b.prototype.crafting_categories)
       and dist2(b.position, anchor(m)) < RADIUS * RADIUS then own = own + 1 end
   end
   if own >= 3 then return nil, "I've set up " .. own .. " machines for " .. pretty(item) .. " and can't use them; something's in the way." end
   local options = {}
-  for name, p in pairs(prototypes.get_entity_filtered({ { filter = "crafting-category", crafting_category = r.category } })) do
+  local cat_filters = {}
+  for _, c in pairs(r.categories) do cat_filters[#cat_filters + 1] = { filter = "crafting-category", crafting_category = c } end
+  for name, p in pairs(prototypes.get_entity_filtered(cat_filters)) do
     local it = (p.type == "furnace" or p.type == "assembling-machine") and p.items_to_place_this and p.items_to_place_this[1]
-    if it and (not p.fixed_recipe or p.fixed_recipe == r.name) then
+    if it and (not p.fixed_recipe or p.fixed_recipe.name == r.name) then
       local score = (p.burner_prototype and 0 or 2) + (have_count(m, it.name) > 0 and 0 or 1)
       options[#options + 1] = { item = it.name, score = score }
     end

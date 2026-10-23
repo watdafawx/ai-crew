@@ -43,8 +43,8 @@ local function build(s, f)
       local fu = s.create_entity({ name = "stone-furnace", position = { x, y + 6 }, force = f })
       furnaces = furnaces + 1
       fu.insert({ name = "coal", count = 10 })
-      fu.get_inventory(defines.inventory.furnace_source).insert({ name = "iron-ore", count = 50 })
-      fu.get_inventory(defines.inventory.furnace_result).insert({ name = "iron-plate", count = 100 })
+      fu.get_inventory(defines.inventory.crafter_input).insert({ name = "iron-ore", count = 50 })
+      fu.get_inventory(defines.inventory.crafter_output).insert({ name = "iron-plate", count = 100 })
       if j % 2 == 0 then
         local i = s.create_entity({ name = "burner-inserter", position = { x + 0.5, y + 4.5 }, direction = defines.direction.south,
           force = f })

@@ -47,7 +47,7 @@ script.on_nth_tick(60, function(ev)
       storage.killed, storage.stopped_after_kill = true, not shooting()
       -- one held still in range: shot at, then moved out of its range
       local b = s.create_entity({ name = "small-biter", position = { 12, -6 }, force = "enemy" })
-      b.active, b.destructible = false, false
+      b.disabled_by_script, b.destructible = true, false
       storage.far, storage.phase, storage.t = b, "far", ev.tick
     elseif ev.tick > 3000 then
       storage.phase = "end"

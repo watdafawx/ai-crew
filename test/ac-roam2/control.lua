@@ -57,7 +57,7 @@ script.on_nth_tick(5, function(ev)
     end
   end
   log("loop: " .. s.count_entities_filtered({ area = storage.loop }) .. " pieces, underground paired: "
-    .. tostring(storage.ugi.neighbours ~= nil) .. ", bricks " .. storage.bricks0)
+    .. tostring(storage.ugi.underground_belt_neighbour ~= nil) .. ", bricks " .. storage.bricks0)
   -- far out: a furnace marked for upgrade
   storage.far = s.create_entity({ name = "stone-furnace", position = { 56, 2 }, force = f })
   storage.far.order_upgrade({ force = f, target = "steel-furnace" })
@@ -157,7 +157,7 @@ script.on_nth_tick(60, function(ev)
   local ug = s.find_entities_filtered({ name = "fast-underground-belt", area = storage.loop })
   local ug_ok = #ug == 2
   for _, u in ipairs(ug) do
-    ug_ok = ug_ok and u.direction == D.west and u.neighbours ~= nil
+    ug_ok = ug_ok and u.direction == D.west and u.underground_belt_neighbour ~= nil
       and u.belt_to_ground_type == (u.position.x > -14 and "input" or "output")
   end
   local chest = s.find_entities_filtered({ name = "iron-chest", position = { 0.5, 0.5 } })[1].get_inventory(defines.inventory.chest)
